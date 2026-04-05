@@ -1,0 +1,48 @@
+{
+  "$schema": "https://www.raycast.com/schemas/extension.json",
+  "name": "charp",
+  "title": "Character Picker",
+  "description": "Unicode character picker with fuzzy search, popularity ranking, and keyboard layout awareness",
+  "icon": "icon.png",
+  "author": "shields",
+  "platforms": [
+    "macOS"
+  ],
+  "categories": [
+    "Productivity"
+  ],
+  "license": "UNLICENSED",
+  "commands": [
+    {
+      "name": "pick-character",
+      "title": "Pick Character",
+      "description": "Search and insert Unicode characters",
+      "mode": "view"
+    }
+  ],
+  "dependencies": {
+    "@raycast/api": "^1.104.11",
+    "@raycast/utils": "^2.2.3",
+    "fast-xml-parser": "^5.5.10"
+  },
+  "devDependencies": {
+    "@raycast/eslint-config": "^1.0.11",
+    "@types/node": "~22.14.0",
+    "eslint": "^8.57.1",
+    "prettier": "^3.8.1",
+    "tsx": "^4.21.0",
+    "typescript": "^5.8.3",
+    "vitest": "^4.1.2"
+  },
+  "scripts": {
+    "prebuild": "npm run generate",
+    "build": "ray build -e dist",
+    "predev": "npm run generate",
+    "dev": "ray develop",
+    "lint": "ray lint && prettier --check .",
+    "fix-lint": "ray lint --fix && prettier --write .",
+    "fmt": "prettier --write .",
+    "generate": "npx tsx scripts/generate-data.ts",
+    "test": "vitest run"
+  }
+}
