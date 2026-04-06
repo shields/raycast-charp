@@ -193,12 +193,7 @@ function parseKeylayout(xml: string): ParsedLayout {
 export function buildKeystrokeMap(
   keylayoutXml: string,
 ): Map<string, KeystrokeDescription> {
-  const {
-    keyMaps,
-    keyActions,
-    actionDefs,
-    terminators: _terminators,
-  } = parseKeylayout(keylayoutXml);
+  const { keyMaps, keyActions, actionDefs } = parseKeylayout(keylayoutXml);
   const keyLabels = deriveKeyLabels(keyMaps, keyActions, actionDefs);
   const map = new Map<string, KeystrokeDescription>();
 

@@ -206,6 +206,7 @@ export default function PickCharacter() {
       filtering={false}
       onSearchTextChange={setSearchText}
       throttle
+      isShowingDetail
     >
       {visibleCharacters.map((entry) => (
         <CharacterItem
@@ -233,19 +234,18 @@ function CharacterItem({
   const codePoint = formatCodePoint(entry.cp);
   const htmlEntity = formatHTMLEntity(entry.cp);
 
-  const accessories: List.Item.Accessory[] = [];
-  if (keystroke) {
-    accessories.push({
-      tag: keystroke.label,
-      tooltip: `Type: ${keystroke.label}`,
-    });
-  }
-  accessories.push({ tag: codePoint });
+  const markdown = useMemo(() => {
+    const lines = [`# ${display}`, "", entry.name, "", `\`${codePoint}\``];
+    if (keystroke) {
+      lines.push("", `Keystroke: ${keystroke.label}`);
+    }
+    return lines.join("\n");
+  }, [display, entry.name, codePoint, keystroke]);
 
   return (
     <List.Item
       title={`${display}  ${entry.name}`}
-      accessories={accessories}
+      detail={<List.Item.Detail markdown={markdown} />}
       actions={
         <ActionPanel>
           <Action
@@ -264,6 +264,7 @@ function CharacterItem({
             shortcut={{ modifiers: ["cmd", "shift"], key: "c" }}
           />
           <Action.CopyToClipboard
+            // eslint-disable-next-line @raycast/prefer-title-case
             title="Copy HTML Entity"
             content={htmlEntity}
             shortcut={{ modifiers: ["cmd", "shift"], key: "h" }}

@@ -7,7 +7,7 @@ test:
 	npx vitest run
 
 lint:
-	ray lint
+	npx ray lint
 	npx prettier --check .
 
 fmt:
