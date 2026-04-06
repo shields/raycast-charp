@@ -61,24 +61,25 @@ score tier, preserving rank order within each bucket.
 **Non-BMP character safety**: Raycast's Swift JSON parser crashes on non-BMP
 characters (U+10000+, i.e. emoji) in the render tree
 ([raycast/extensions#17053](https://github.com/raycast/extensions/issues/17053)).
-Both raw UTF-8 and `\uD83D\uDCAF` surrogate-pair escapes are rejected. Two
-display functions handle this:
+Both raw UTF-8 and `\uD83D\uDCAF` surrogate-pair escapes are rejected. Display
+functions handle this at different levels:
 
 - `characterDisplay()` — for plain-text props (title, accessories). Returns
   `U+XXXX` for non-BMP characters.
-- `markdownDisplay()` — for markdown, where HTML character references
-  (`&#x1F4AF;`) render as the actual glyph without putting raw non-BMP bytes in
-  the JSON.
+- `svgCharacterImage()` (`src/svg.ts`) — for the detail panel header. Renders
+  characters as SVG `<text>` elements using XML character references, then
+  base64-encodes the SVG as a markdown data URI image. This bypasses the JSON
+  parser entirely (the data URI is pure ASCII) and goes through CoreGraphics
+  text shaping, which correctly applies variation selectors. A zero-width space
+  before the image tag forces inline layout (left-aligned).
+- Variation selector presentation (text U+FE0E vs emoji U+FE0F) uses inline text
+  for BMP characters. Non-BMP characters cannot show variation comparisons
+  because the markdown renderer does not combine HTML entities with following
+  variation selectors into a sequence.
 
 The "Copy Character" action uses a callback (`Clipboard.copy()` at runtime)
 instead of `Action.CopyToClipboard` to avoid placing the raw character in the
 render tree.
-
-A secondary consequence: variation selector presentation (text U+FE0E vs emoji
-U+FE0F) can only be shown for BMP characters, where raw characters are used
-directly. Non-BMP characters use HTML character references, and the markdown
-renderer does not combine an HTML entity with a following variation selector
-into a variation sequence — it treats them as separate characters.
 
 ## Conventions
 

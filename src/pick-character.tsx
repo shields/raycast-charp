@@ -16,6 +16,7 @@ import {
   recordCharacterUse,
 } from "./recency.js";
 import { searchCharacters } from "./search.js";
+import { svgCharacterImage } from "./svg.js";
 import type { CharacterEntry, KeystrokeDescription } from "./types.js";
 
 function formatCodePoint(cp: number): string {
@@ -34,18 +35,6 @@ function characterDisplay(cp: number): string {
   }
   if (cp > 0xffff) {
     return formatCodePoint(cp);
-  }
-  return String.fromCodePoint(cp);
-}
-
-/** Display for markdown, where HTML character references render as
- * glyphs without raw non-BMP bytes in the render tree JSON. */
-function markdownDisplay(cp: number): string {
-  if (cp < 0x20 || (cp >= 0x7f && cp < 0xa0)) {
-    return `[${formatCodePoint(cp)}]`;
-  }
-  if (cp > 0xffff) {
-    return `&#x${cp.toString(16).toUpperCase()};`;
   }
   return String.fromCodePoint(cp);
 }
@@ -153,16 +142,18 @@ function CharacterItem({
     ? [{ tag: keystroke.label, tooltip: `Type: ${keystroke.label}` }]
     : [];
 
+  const isControl = entry.cp < 0x20 || (entry.cp >= 0x7f && entry.cp < 0xa0);
   const lines = [
-    `# ${markdownDisplay(entry.cp)}`,
+    isControl
+      ? `# [${codePoint}]`
+      : svgCharacterImage(entry.vs ? [entry.cp, 0xfe0f] : [entry.cp]),
     "",
     entry.name,
     "",
     `\`${codePoint}\`  \`${htmlEntity}\``,
   ];
-  // Non-BMP characters use HTML entities (&#xNNNN;) to avoid the Raycast JSON
-  // crash, but HTML entities don't form variation sequences with a following
-  // variation selector — the renderer processes them as separate characters.
+  // Non-BMP characters use HTML entities to avoid the Raycast JSON crash,
+  // but HTML entities don't form variation sequences with a following selector.
   if (entry.vs && entry.cp <= 0xffff) {
     const ch = String.fromCodePoint(entry.cp);
     lines.push("", `Text: ${ch}\uFE0E \u00A0 Emoji: ${ch}\uFE0F`);
