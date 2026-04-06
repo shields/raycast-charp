@@ -7,17 +7,18 @@
 
 /* eslint-disable @typescript-eslint/ban-types */
 
-type ExtensionPreferences = {};
+type ExtensionPreferences = {}
 
 /** Preferences accessible in all the extension's commands */
-declare type Preferences = ExtensionPreferences;
+declare type Preferences = ExtensionPreferences
 
 declare namespace Preferences {
   /** Preferences accessible in the `pick-character` command */
-  export type PickCharacter = ExtensionPreferences & {};
+  export type PickCharacter = ExtensionPreferences & {}
 }
 
 declare namespace Arguments {
   /** Arguments passed to the `pick-character` command */
-  export type PickCharacter = {};
+  export type PickCharacter = {}
 }
+

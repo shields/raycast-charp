@@ -208,6 +208,10 @@ export default function PickCharacter() {
       throttle
       isShowingDetail
     >
+      <List.EmptyView
+        title="No Characters Found"
+        description="Try a different search term"
+      />
       {visibleCharacters.map((entry) => (
         <CharacterItem
           key={entry.cp}
