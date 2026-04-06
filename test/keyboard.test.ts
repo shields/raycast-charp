@@ -232,10 +232,9 @@ describe("loadKeystrokeMap", () => {
     vi.resetAllMocks();
   });
 
-  it("returns empty map when defaults read fails", async () => {
+  it("rejects when defaults read fails", async () => {
     mockExecError();
-    const map = await loadKeystrokeMap();
-    expect(map.size).toBe(0);
+    await expect(loadKeystrokeMap()).rejects.toThrow("command failed");
   });
 
   it("returns empty map when no keyboard layout name found", async () => {

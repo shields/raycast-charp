@@ -129,10 +129,12 @@ function parseKeylayout(xml: string): ParsedLayout {
     };
   }
 
-  // Parse keyMapSet → keyMap[]
-  const keyMapSet = keyboard["keyMapSet"] as
-    | Record<string, unknown>
-    | undefined;
+  // Parse keyMapSet → keyMap[]. Layouts may have multiple keyMapSet
+  // elements (e.g. one per keyboard device type); use the first.
+  const rawKeyMapSet = keyboard["keyMapSet"];
+  const keyMapSet = (
+    Array.isArray(rawKeyMapSet) ? rawKeyMapSet[0] : rawKeyMapSet
+  ) as Record<string, unknown> | undefined;
   const rawKeyMaps = toArray(
     keyMapSet?.["keyMap"] as KeyMapElement | KeyMapElement[] | undefined,
   );
@@ -334,43 +336,49 @@ const execAsync = promisify(exec);
 export async function loadKeystrokeMap(): Promise<
   Map<string, KeystrokeDescription>
 > {
-  try {
-    const { stdout } = await execAsync(
-      "defaults read com.apple.HIToolbox AppleSelectedInputSources",
-      { timeout: 5000 },
-    );
+  const { stdout } = await execAsync(
+    "defaults read com.apple.HIToolbox AppleSelectedInputSources",
+    { timeout: 5000 },
+  );
 
-    const nameMatch = /"KeyboardLayout Name"\s*=\s*"?([^";]+)"?/.exec(stdout);
-    if (!nameMatch) return new Map();
-    const layoutName = nameMatch[1]!.trim();
+  const nameMatch = /"KeyboardLayout Name"\s*=\s*"?([^";]+)"?/.exec(stdout);
+  if (!nameMatch) return new Map();
+  const layoutName = nameMatch[1]!.trim();
 
-    // System layouts live in AppleKeyboardLayouts.bundle as a binary .dat
-    // file, not as individual .keylayout XML. Only user-installed .keylayout
-    // files can be parsed. This covers custom layouts; standard layouts lack
-    // interesting compose sequences anyway.
-    const userPath = join(
-      homedir(),
-      "Library",
-      "Keyboard Layouts",
-      `${layoutName}.keylayout`,
-    );
-    const systemPath = join(
-      "/Library",
-      "Keyboard Layouts",
-      `${layoutName}.keylayout`,
-    );
+  // Let errors propagate so they surface in the UI rather than silently
+  // degrading to an empty keystroke map.
+  //
+  // System layouts live in AppleKeyboardLayouts.bundle as a binary .dat
+  // file, not as individual .keylayout XML. Only user-installed .keylayout
+  // files can be parsed. This covers custom layouts; standard layouts lack
+  // interesting compose sequences anyway.
+  const userPath = join(
+    homedir(),
+    "Library",
+    "Keyboard Layouts",
+    `${layoutName}.keylayout`,
+  );
+  const systemPath = join(
+    "/Library",
+    "Keyboard Layouts",
+    `${layoutName}.keylayout`,
+  );
 
-    for (const layoutPath of [userPath, systemPath]) {
-      try {
-        const xml = await readFile(layoutPath, "utf-8");
-        return buildKeystrokeMap(xml);
-      } catch {
-        continue;
-      }
+  for (const layoutPath of [userPath, systemPath]) {
+    let xml: string;
+    try {
+      xml = await readFile(layoutPath, "utf-8");
+    } catch {
+      continue;
     }
-
-    return new Map();
-  } catch {
-    return new Map();
+    // Intentionally outside try/catch: if we found the file but parsing
+    // fails, that's a bug worth surfacing, not a reason to try another path.
+    const map = buildKeystrokeMap(xml);
+    if (map.size === 0) {
+      console.warn(`Parsed ${layoutPath} but keystroke map is empty`);
+    }
+    return map;
   }
+
+  return new Map();
 }

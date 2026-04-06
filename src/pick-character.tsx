@@ -149,6 +149,10 @@ function CharacterItem({
   const codePoint = formatCodePoint(entry.cp);
   const htmlEntity = formatHTMLEntity(entry.cp);
 
+  const accessories: List.Item.Accessory[] = keystroke
+    ? [{ tag: keystroke.label, tooltip: `Type: ${keystroke.label}` }]
+    : [];
+
   const lines = [
     `# ${markdownDisplay(entry.cp)}`,
     "",
@@ -167,6 +171,7 @@ function CharacterItem({
   return (
     <List.Item
       title={`${display}  ${entry.name}`}
+      accessories={accessories}
       detail={<List.Item.Detail markdown={markdown} />}
       actions={
         <ActionPanel>
