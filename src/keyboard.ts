@@ -216,8 +216,8 @@ export function buildKeystrokeMap(
     if (!existing) {
       directMap.set(output, { modifierIndex: modIndex, keyCode });
     } else {
-      const oldPri = MODIFIER_MAP[existing.modifierIndex]?.priority ?? 99;
-      const newPri = MODIFIER_MAP[modIndex]?.priority ?? 99;
+      const oldPri = MODIFIER_MAP[existing.modifierIndex]!.priority;
+      const newPri = MODIFIER_MAP[modIndex]!.priority;
       if (newPri < oldPri) {
         directMap.set(output, { modifierIndex: modIndex, keyCode });
       }
@@ -249,8 +249,7 @@ export function buildKeystrokeMap(
 
   // Emit direct keystrokes
   for (const [char, info] of directMap) {
-    const mod = MODIFIER_MAP[info.modifierIndex];
-    if (!mod) continue;
+    const mod = MODIFIER_MAP[info.modifierIndex]!;
     map.set(char, {
       label: formatKeystroke(mod.label, labelFor(info.keyCode)),
       modifiers: mod.label || "none",

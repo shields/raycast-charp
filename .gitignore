@@ -3,3 +3,4 @@ dist/
 src/characters.ts
 src/characters.json
 data/
+coverage/
