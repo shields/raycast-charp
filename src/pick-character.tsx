@@ -15,9 +15,8 @@ import {
   getRecentCharacters,
   recordCharacterUse,
 } from "./recency.js";
+import { searchCharacters } from "./search.js";
 import type { CharacterEntry, KeystrokeDescription } from "./types.js";
-
-const MAX_RESULTS = 200;
 
 function formatCodePoint(cp: number): string {
   return `U+${cp.toString(16).toUpperCase().padStart(4, "0")}`;
@@ -27,87 +26,28 @@ function formatHTMLEntity(cp: number): string {
   return `&#x${cp.toString(16).toUpperCase()};`;
 }
 
+/** Render-tree-safe display for plain-text props. Non-BMP characters
+ * crash Raycast's Swift JSON parser (raycast/extensions#17053). */
 function characterDisplay(cp: number): string {
   if (cp < 0x20 || (cp >= 0x7f && cp < 0xa0)) {
     return `[${formatCodePoint(cp)}]`;
   }
+  if (cp > 0xffff) {
+    return formatCodePoint(cp);
+  }
   return String.fromCodePoint(cp);
 }
 
-/**
- * Score how well an entry matches the query terms. Higher = better match.
- * Returns 0 for no match.
- *
- * Scoring tiers:
- *   100 — the character itself equals the full query
- *    80 — a name word exactly equals a term
- *    60 — a name word starts with a term
- *    40 — a keyword word starts with a term
- *    20 — substring match in name or keywords
- *
- * Final score = minimum term score (weakest link), so all terms must match.
- */
-function scoreMatch(entry: CharacterEntry, terms: string[]): number {
-  const nameWords = entry.name.toLowerCase().split(/[\s-]+/);
-  const char = String.fromCodePoint(entry.cp);
-  const hex = entry.cp.toString(16).padStart(4, "0");
-
-  let minScore = Infinity;
-
-  for (const term of terms) {
-    let termScore = 0;
-
-    // Exact character match
-    if (char.toLowerCase() === term) {
-      termScore = 100;
-    }
-
-    // Exact name word match
-    if (termScore < 80 && nameWords.includes(term)) {
-      termScore = 80;
-    }
-
-    // Name word starts with term
-    if (termScore < 60 && nameWords.some((w) => w.startsWith(term))) {
-      termScore = 60;
-    }
-
-    // Keyword word starts with term
-    if (
-      termScore < 40 &&
-      entry.keywords.some((kw) =>
-        kw
-          .toLowerCase()
-          .split(/[\s-]+/)
-          .some((w) => w.startsWith(term)),
-      )
-    ) {
-      termScore = 40;
-    }
-
-    // Substring match in name
-    if (termScore < 20 && entry.name.toLowerCase().includes(term)) {
-      termScore = 20;
-    }
-
-    // Substring match in keywords
-    if (
-      termScore < 20 &&
-      entry.keywords.some((kw) => kw.toLowerCase().includes(term))
-    ) {
-      termScore = 20;
-    }
-
-    // Hex code point match
-    if (termScore < 20 && hex.includes(term)) {
-      termScore = 20;
-    }
-
-    if (termScore === 0) return 0;
-    minScore = Math.min(minScore, termScore);
+/** Display for markdown, where HTML character references render as
+ * glyphs without raw non-BMP bytes in the render tree JSON. */
+function markdownDisplay(cp: number): string {
+  if (cp < 0x20 || (cp >= 0x7f && cp < 0xa0)) {
+    return `[${formatCodePoint(cp)}]`;
   }
-
-  return minScore;
+  if (cp > 0xffff) {
+    return `&#x${cp.toString(16).toUpperCase()};`;
+  }
+  return String.fromCodePoint(cp);
 }
 
 export default function PickCharacter() {
@@ -154,38 +94,10 @@ export default function PickCharacter() {
     return [...recent, ...withKey, ...rest];
   }, [recentEntries, keyboardCps]);
 
-  // Filter, score, and cap results
-  const visibleCharacters = useMemo(() => {
-    const query = searchText.trim().toLowerCase();
-    if (query === "") {
-      return rankedCharacters.slice(0, MAX_RESULTS);
-    }
-
-    const terms = query.split(/\s+/);
-
-    // Collect matches in score buckets. Within each bucket the original
-    // rank order is preserved, so we can flatten without sorting.
-    const buckets: CharacterEntry[][] = [[], [], [], [], []];
-    const tierIndex = (s: number) =>
-      s >= 100 ? 0 : s >= 80 ? 1 : s >= 60 ? 2 : s >= 40 ? 3 : 4;
-
-    for (const entry of rankedCharacters) {
-      const score = scoreMatch(entry, terms);
-      if (score > 0) {
-        buckets[tierIndex(score)]!.push(entry);
-      }
-    }
-
-    // Flatten buckets in order — within each bucket, original rank is preserved
-    const results: CharacterEntry[] = [];
-    for (const bucket of buckets) {
-      for (const entry of bucket) {
-        results.push(entry);
-        if (results.length >= MAX_RESULTS) return results;
-      }
-    }
-    return results;
-  }, [searchText, rankedCharacters]);
+  const visibleCharacters = useMemo(
+    () => searchCharacters(rankedCharacters, searchText),
+    [searchText, rankedCharacters],
+  );
 
   const handleSelect = useCallback(
     async (entry: CharacterEntry) => {
@@ -233,18 +145,24 @@ function CharacterItem({
   keystroke: KeystrokeDescription | undefined;
   onSelect: (entry: CharacterEntry) => Promise<void>;
 }) {
-  const char = String.fromCodePoint(entry.cp);
   const display = characterDisplay(entry.cp);
   const codePoint = formatCodePoint(entry.cp);
   const htmlEntity = formatHTMLEntity(entry.cp);
 
-  const markdown = useMemo(() => {
-    const lines = [`# ${display}`, "", entry.name, "", `\`${codePoint}\``];
-    if (keystroke) {
-      lines.push("", `Keystroke: ${keystroke.label}`);
-    }
-    return lines.join("\n");
-  }, [display, entry.name, codePoint, keystroke]);
+  const lines = [
+    `# ${markdownDisplay(entry.cp)}`,
+    "",
+    entry.name,
+    "",
+    `\`${codePoint}\`  \`${htmlEntity}\``,
+  ];
+  if (entry.keywords.length > 0) {
+    lines.push("", entry.keywords.join(", "));
+  }
+  if (keystroke) {
+    lines.push("", `Keystroke: **${keystroke.label}**`);
+  }
+  const markdown = lines.join("\n");
 
   return (
     <List.Item
@@ -257,10 +175,14 @@ function CharacterItem({
             icon={Icon.Clipboard}
             onAction={() => void onSelect(entry)}
           />
-          <Action.CopyToClipboard
+          <Action
             title="Copy Character"
-            content={char}
+            icon={Icon.CopyClipboard}
             shortcut={{ modifiers: ["cmd"], key: "c" }}
+            onAction={async () => {
+              await Clipboard.copy(String.fromCodePoint(entry.cp));
+              await showHUD("Copied to Clipboard");
+            }}
           />
           <Action.CopyToClipboard
             title="Copy Code Point"

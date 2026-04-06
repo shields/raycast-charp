@@ -54,9 +54,25 @@ linear decay scoring from `src/recency.ts` via Raycast LocalStorage) >
 keyboard-accessible characters > static popularity order from the generated
 data.
 
-**Search scoring** (`scoreMatch` in `src/pick-character.tsx`): Weakest-link
-scoring across query terms with five tiers (100/80/60/40/20). Results are
-bucketed by score tier, preserving rank order within each bucket.
+**Search scoring** (`scoreMatch` in `src/search.ts`): Weakest-link scoring
+across query terms with five tiers (100/80/60/40/20). Results are bucketed by
+score tier, preserving rank order within each bucket.
+
+**Non-BMP character safety**: Raycast's Swift JSON parser crashes on non-BMP
+characters (U+10000+, i.e. emoji) in the render tree
+([raycast/extensions#17053](https://github.com/raycast/extensions/issues/17053)).
+Both raw UTF-8 and `\uD83D\uDCAF` surrogate-pair escapes are rejected. Two
+display functions handle this:
+
+- `characterDisplay()` — for plain-text props (title, accessories). Returns
+  `U+XXXX` for non-BMP characters.
+- `markdownDisplay()` — for markdown, where HTML character references
+  (`&#x1F4AF;`) render as the actual glyph without putting raw non-BMP bytes in
+  the JSON.
+
+The "Copy Character" action uses a callback (`Clipboard.copy()` at runtime)
+instead of `Action.CopyToClipboard` to avoid placing the raw character in the
+render tree.
 
 ## Conventions
 
