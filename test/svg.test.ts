@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { svgCharacterImage } from "../src/svg.js";
 
+function decodeSvg(dataUri: string): string {
+  const base64 = dataUri
+    .replace(/^\u200B!\[\]\(data:image\/svg\+xml;base64,/, "")
+    .replace(/\)$/, "");
+  return Buffer.from(base64, "base64").toString("utf-8");
+}
+
 describe("svgCharacterImage", () => {
   it("returns a markdown image with base64 SVG data URI", () => {
     const result = svgCharacterImage([0x41]);
@@ -10,22 +17,14 @@ describe("svgCharacterImage", () => {
   });
 
   it("produces valid SVG with XML character references", () => {
-    const result = svgCharacterImage([0x2764]);
-    const base64 = result
-      .replace(/^\u200B!\[\]\(data:image\/svg\+xml;base64,/, "")
-      .replace(/\)$/, "");
-    const svg = Buffer.from(base64, "base64").toString("utf-8");
+    const svg = decodeSvg(svgCharacterImage([0x2764]));
     expect(svg).toContain("&#x2764;");
     expect(svg).toContain("<svg");
     expect(svg).toContain("</svg>");
   });
 
   it("joins multiple code points into a single text element", () => {
-    const result = svgCharacterImage([0x1f324, 0xfe0f]);
-    const base64 = result
-      .replace(/^\u200B!\[\]\(data:image\/svg\+xml;base64,/, "")
-      .replace(/\)$/, "");
-    const svg = Buffer.from(base64, "base64").toString("utf-8");
+    const svg = decodeSvg(svgCharacterImage([0x1f324, 0xfe0f]));
     expect(svg).toContain("&#x1F324;&#xFE0F;");
   });
 

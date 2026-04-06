@@ -17,19 +17,26 @@ import {
 } from "./recency.js";
 import { searchCharacters } from "./search.js";
 import { svgCharacterImage } from "./svg.js";
+import { entryCodePoints, entryKey } from "./types.js";
 import type { CharacterEntry, KeystrokeDescription } from "./types.js";
+import { variants } from "./variants.js";
 
 function formatCodePoint(cp: number): string {
   return `U+${cp.toString(16).toUpperCase().padStart(4, "0")}`;
 }
 
+/** Used for variant display in the detail panel markdown. */
 function formatHTMLEntity(cp: number): string {
   return `&#x${cp.toString(16).toUpperCase()};`;
 }
 
 /** Render-tree-safe display for plain-text props. Non-BMP characters
  * crash Raycast's Swift JSON parser (raycast/extensions#17053). */
-function characterDisplay(cp: number): string {
+function characterDisplay(entry: CharacterEntry): string {
+  if (entry.cps) {
+    return `${formatCodePoint(entry.cps[0]!)}…`;
+  }
+  const cp = entry.cp;
   if (cp < 0x20 || (cp >= 0x7f && cp < 0xa0)) {
     return `[${formatCodePoint(cp)}]`;
   }
@@ -69,16 +76,19 @@ export default function PickCharacter() {
     const rest: CharacterEntry[] = [];
 
     for (const char of characters) {
-      if (boosts.has(char.cp)) {
+      const key = entryKey(char);
+      if (boosts.has(key)) {
         recent.push(char);
-      } else if (keyboardCps.has(char.cp)) {
+      } else if (!char.cps && keyboardCps.has(char.cp)) {
         withKey.push(char);
       } else {
         rest.push(char);
       }
     }
 
-    recent.sort((a, b) => (boosts.get(b.cp) ?? 0) - (boosts.get(a.cp) ?? 0));
+    recent.sort(
+      (a, b) => (boosts.get(entryKey(b)) ?? 0) - (boosts.get(entryKey(a)) ?? 0),
+    );
 
     return [...recent, ...withKey, ...rest];
   }, [recentEntries, keyboardCps]);
@@ -90,8 +100,9 @@ export default function PickCharacter() {
 
   const handleSelect = useCallback(
     async (entry: CharacterEntry) => {
-      const char = String.fromCodePoint(entry.cp);
-      await recordCharacterUse(entry.cp);
+      const cps = entryCodePoints(entry);
+      const char = String.fromCodePoint(...cps);
+      await recordCharacterUse(entry);
       revalidateRecency();
       // Paste last: it closes the Raycast window and may suspend the process
       await Clipboard.paste(char);
@@ -115,9 +126,13 @@ export default function PickCharacter() {
       />
       {visibleCharacters.map((entry) => (
         <CharacterItem
-          key={entry.cp}
+          key={entryKey(entry)}
           entry={entry}
-          keystroke={resolvedKeystrokeMap.get(String.fromCodePoint(entry.cp))}
+          keystroke={
+            entry.cps
+              ? undefined
+              : resolvedKeystrokeMap.get(String.fromCodePoint(entry.cp))
+          }
           onSelect={handleSelect}
         />
       ))}
@@ -134,23 +149,24 @@ function CharacterItem({
   keystroke: KeystrokeDescription | undefined;
   onSelect: (entry: CharacterEntry) => Promise<void>;
 }) {
-  const display = characterDisplay(entry.cp);
-  const codePoint = formatCodePoint(entry.cp);
-  const htmlEntity = formatHTMLEntity(entry.cp);
+  const cps = entryCodePoints(entry);
+  const display = characterDisplay(entry);
+  const codePoints = cps.map(formatCodePoint);
+  const codePointStr = codePoints.join("\u00A0");
 
   const accessories: List.Item.Accessory[] = keystroke
     ? [{ tag: keystroke.label, tooltip: `Type: ${keystroke.label}` }]
     : [];
 
-  const isControl = entry.cp < 0x20 || (entry.cp >= 0x7f && entry.cp < 0xa0);
+  const isControl =
+    !entry.cps && (entry.cp < 0x20 || (entry.cp >= 0x7f && entry.cp < 0xa0));
+  const imageCps = entry.vs ? [...cps, 0xfe0f] : cps;
   const lines = [
-    isControl
-      ? `# [${codePoint}]`
-      : svgCharacterImage(entry.vs ? [entry.cp, 0xfe0f] : [entry.cp]),
+    isControl ? `# [${codePointStr}]` : svgCharacterImage(imageCps),
     "",
     entry.name,
     "",
-    `\`${codePoint}\`  \`${htmlEntity}\``,
+    `\`${codePointStr}\``,
   ];
   // Non-BMP characters use HTML entities to avoid the Raycast JSON crash,
   // but HTML entities don't form variation sequences with a following selector.
@@ -158,6 +174,23 @@ function CharacterItem({
     const ch = String.fromCodePoint(entry.cp);
     lines.push("", `Text: ${ch}\uFE0E \u00A0 Emoji: ${ch}\uFE0F`);
   }
+
+  // Show skin tone / modifier variants as HTML entities. Adjacent entities
+  // form complete emoji sequences (unlike variation selectors which don't
+  // combine with a preceding entity). Text renders inline correctly,
+  // whereas SVG images don't flow with the label text.
+  const key = entryKey(entry);
+  const entryVariants = variants[key];
+  if (entryVariants && entryVariants.length > 0) {
+    const variantText = entryVariants
+      .map((v) => {
+        const refs = v.cps.map(formatHTMLEntity).join("");
+        return `${refs} ${v.label}`;
+      })
+      .join(" \u00A0 ");
+    lines.push("", "**Variants**", "", variantText);
+  }
+
   if (entry.keywords.length > 0) {
     lines.push("", entry.keywords.join(", "));
   }
@@ -165,6 +198,8 @@ function CharacterItem({
     lines.push("", `Keystroke: **${keystroke.label}**`);
   }
   const markdown = lines.join("\n");
+
+  const charString = String.fromCodePoint(...cps);
 
   return (
     <List.Item
@@ -183,20 +218,14 @@ function CharacterItem({
             icon={Icon.CopyClipboard}
             shortcut={{ modifiers: ["cmd"], key: "c" }}
             onAction={async () => {
-              await Clipboard.copy(String.fromCodePoint(entry.cp));
+              await Clipboard.copy(charString);
               await showHUD("Copied to Clipboard");
             }}
           />
           <Action.CopyToClipboard
             title="Copy Code Point"
-            content={codePoint}
+            content={codePoints.join(" ")}
             shortcut={{ modifiers: ["cmd", "shift"], key: "c" }}
-          />
-          <Action.CopyToClipboard
-            // eslint-disable-next-line @raycast/prefer-title-case
-            title="Copy HTML Entity"
-            content={htmlEntity}
-            shortcut={{ modifiers: ["cmd", "shift"], key: "h" }}
           />
         </ActionPanel>
       }

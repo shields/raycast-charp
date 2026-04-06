@@ -1,10 +1,11 @@
 import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { entryKey } from "../src/types.js";
 
 const PROJECT_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const DATA_DIR = join(PROJECT_ROOT, "data");
-const OUTPUT = join(PROJECT_ROOT, "src", "characters.ts");
+const SRC_DIR = join(PROJECT_ROOT, "src");
 
 const UNICODE_VERSION = "17.0.0";
 // Emoji 17.0 is only under "latest" as of 2026-04; use 16.0 for a stable URL
@@ -289,25 +290,127 @@ function parseEmojiVariationSequences(text: string): Set<number> {
   return cps;
 }
 
-function parseEmojiTest(text: string): Map<number, number> {
+// Skin tone modifier range
+const SKIN_TONE_LO = 0x1f3fb;
+const SKIN_TONE_HI = 0x1f3ff;
+
+function isSkinTone(cp: number): boolean {
+  return cp >= SKIN_TONE_LO && cp <= SKIN_TONE_HI;
+}
+
+interface EmojiTestResult {
+  emojiOrder: Map<number, number>;
+  sequenceEntries: {
+    cps: number[];
+    name: string;
+    keywords: string[];
+    score: number;
+  }[];
+  variantMap: Map<string, { cps: number[]; label: string }[]>;
+}
+
+function parseEmojiTest(text: string): EmojiTestResult {
   const emojiOrder = new Map<number, number>();
-  let rank = 150; // Emoji start below the top symbols
+  const sequenceEntries: EmojiTestResult["sequenceEntries"] = [];
+  const variantMap = new Map<string, { cps: number[]; label: string }[]>();
+
+  let rank = 150;
+  let seqRank = 100;
+  let currentGroup = "";
+  let currentSubgroup = "";
+
   for (const line of text.split("\n")) {
-    if (line === "" || line.startsWith("#")) continue;
-    const match = /^([0-9A-Fa-f]+)\s+;/.exec(line);
-    if (!match) continue;
-    // Only single code point emoji (not sequences)
-    if (line.includes(" ")) {
-      const parts = line.split(";")[0]!.trim().split(/\s+/);
-      if (parts.length > 1) continue;
+    // Track group/subgroup for keywords
+    const groupMatch = /^# group: (.+)/.exec(line);
+    if (groupMatch) {
+      currentGroup = groupMatch[1]!;
+      continue;
     }
-    const cp = Number.parseInt(match[1]!, 16);
-    if (!emojiOrder.has(cp)) {
-      emojiOrder.set(cp, rank);
-      rank = Math.max(rank - 0.1, 50); // Slowly decrease rank
+    const subgroupMatch = /^# subgroup: (.+)/.exec(line);
+    if (subgroupMatch) {
+      currentSubgroup = subgroupMatch[1]!;
+      continue;
+    }
+
+    if (line === "" || line.startsWith("#")) continue;
+
+    // Only process fully-qualified sequences
+    const match =
+      /^([0-9A-Fa-f][0-9A-Fa-f ]*?)\s+;\s+fully-qualified\s+#\s+\S+\s+E[\d.]+\s+(.+)$/.exec(
+        line,
+      );
+    if (!match) continue;
+
+    const cps = match[1]!
+      .trim()
+      .split(/\s+/)
+      .map((h) => Number.parseInt(h, 16));
+    const name = match[2]!;
+
+    // Single code point: emoji ranking (existing behavior)
+    if (cps.length === 1) {
+      const cp = cps[0]!;
+      if (!emojiOrder.has(cp)) {
+        emojiOrder.set(cp, rank);
+        rank = Math.max(rank - 0.1, 50);
+      }
+      continue;
+    }
+
+    // VS16-only pair (CP + FE0F): skip, handled by variation sequences
+    if (cps.length === 2 && cps[1] === 0xfe0f) continue;
+
+    // Multi-codepoint: classify as variant or list entry
+    const hasSkinTone = cps.some(isSkinTone);
+
+    if (hasSkinTone) {
+      // Variant: strip skin tone modifiers to find the base
+      const baseCps = cps.filter((cp) => !isSkinTone(cp));
+      const baseKey = entryKey({
+        cp: baseCps[0]!,
+        ...(baseCps.length > 1 && { cps: baseCps }),
+      });
+
+      // Extract label: text after ": " in the name
+      const colonIdx = name.indexOf(": ");
+      const label = colonIdx >= 0 ? name.slice(colonIdx + 2) : name;
+
+      let variants = variantMap.get(baseKey);
+      if (!variants) {
+        variants = [];
+        variantMap.set(baseKey, variants);
+      }
+      variants.push({ cps, label });
+    } else {
+      // List entry: flag, keycap, or ZWJ standalone
+      const keywords: string[] = [];
+      if (currentGroup) keywords.push(currentGroup);
+      if (currentSubgroup) keywords.push(currentSubgroup);
+
+      // For country flags, derive the ISO 2-letter code
+      if (
+        cps.length === 2 &&
+        cps[0]! >= 0x1f1e6 &&
+        cps[0]! <= 0x1f1ff &&
+        cps[1]! >= 0x1f1e6 &&
+        cps[1]! <= 0x1f1ff
+      ) {
+        const letter1 = String.fromCodePoint(cps[0]! - 0x1f1e6 + 0x41);
+        const letter2 = String.fromCodePoint(cps[1]! - 0x1f1e6 + 0x41);
+        keywords.push(letter1 + letter2);
+      }
+
+      sequenceEntries.push({
+        cps,
+        name: name.toUpperCase(),
+        keywords,
+        score: seqRank,
+      });
+      seqRank = Math.max(seqRank - 0.1, 30);
     }
   }
-  return emojiOrder;
+
+  return { emojiOrder, sequenceEntries, variantMap };
 }
 
 function computeScore(
@@ -349,16 +452,21 @@ async function main(): Promise<void> {
   const rawChars = parseUnicodeData(fileMap.get("UnicodeData.txt")!);
   const aliases = parseNameAliases(fileMap.get("NameAliases.txt")!);
   const blockRanges = parseBlocks(fileMap.get("Blocks.txt")!);
-  const emojiOrder = parseEmojiTest(fileMap.get("emoji-test.txt")!);
+  const { emojiOrder, sequenceEntries, variantMap } = parseEmojiTest(
+    fileMap.get("emoji-test.txt")!,
+  );
   const variationCps = parseEmojiVariationSequences(
     fileMap.get("emoji-variation-sequences.txt")!,
   );
 
   console.log(`  ${rawChars.length} characters parsed (CJK excluded)`);
+  console.log(`  ${sequenceEntries.length} emoji sequences`);
+  console.log(`  ${variantMap.size} base emoji with variants`);
 
   // Build character entries with keywords and scores
   const entries: {
     cp: number;
+    cps?: number[];
     name: string;
     keywords: string[];
     cat: string;
@@ -418,6 +526,52 @@ async function main(): Promise<void> {
     });
   }
 
+  // Add multi-codepoint sequence entries (flags, keycaps, ZWJ emoji)
+  for (const seq of sequenceEntries) {
+    entries.push({
+      cp: seq.cps[0]!,
+      cps: seq.cps,
+      name: seq.name,
+      keywords: seq.keywords,
+      cat: "So",
+      score: seq.score,
+    });
+  }
+
+  // Reconcile orphan variant groups: skin tone modifiers replace VS16 (FE0F)
+  // in emoji sequences, so the derived base key may be missing FE0F that the
+  // actual entry has. Build a fuzzy index to re-key these variants.
+  const entryKeySet = new Set(
+    entries.map((e) => entryKey({ cp: e.cp, ...(e.cps && { cps: e.cps }) })),
+  );
+  const stripFE0F = (key: string): string =>
+    key
+      .split("-")
+      .filter((h) => h !== "FE0F")
+      .join("-");
+  const fuzzyIndex = new Map<string, string>();
+  for (const key of entryKeySet) {
+    fuzzyIndex.set(stripFE0F(key), key);
+  }
+  for (const [baseKey, variants] of [...variantMap]) {
+    if (!entryKeySet.has(baseKey)) {
+      const realKey = fuzzyIndex.get(stripFE0F(baseKey));
+      if (realKey) {
+        variantMap.delete(baseKey);
+        const existing = variantMap.get(realKey);
+        if (existing) {
+          existing.push(...variants);
+        } else {
+          variantMap.set(realKey, variants);
+        }
+      } else {
+        // Multi-person sequences with per-participant skin tones have no
+        // single base entry to attach to — drop them.
+        variantMap.delete(baseKey);
+      }
+    }
+  }
+
   // Sort by score descending, then by code point ascending for stability
   entries.sort((a, b) => b.score - a.score || a.cp - b.cp);
 
@@ -429,35 +583,61 @@ async function main(): Promise<void> {
     );
   }
 
-  // Generate JSON data file + thin TypeScript re-export
+  // Generate characters JSON + thin TypeScript re-export
   console.log("Generating character data...");
   const jsonData = entries.map((e) => ({
     cp: e.cp,
+    ...(e.cps && { cps: e.cps }),
     name: e.name,
     keywords: e.keywords,
     cat: e.cat,
     ...(e.vs && { vs: true }),
   }));
   const jsonString = JSON.stringify(jsonData);
-  const jsonPath = join(PROJECT_ROOT, "src", "characters.json");
-  writeFileSync(jsonPath, jsonString + "\n");
+  const charJsonPath = join(SRC_DIR, "characters.json");
+  writeFileSync(charJsonPath, jsonString + "\n");
 
-  const tsOutput = [
+  const charTsOutput = [
     "// Auto-generated by scripts/generate-data.ts — do not edit",
     '// Run "npm run generate" to regenerate',
     "",
     'import type { CharacterEntry } from "./types.js";',
-    // eslint-disable is needed because TS can't verify the JSON shape
     "// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment",
     'import data from "./characters.json";',
     "",
     "export const characters: CharacterEntry[] = data as CharacterEntry[];",
     "",
   ].join("\n");
-
-  writeFileSync(OUTPUT, tsOutput);
+  writeFileSync(join(SRC_DIR, "characters.ts"), charTsOutput);
   console.log(
     `  Wrote ${entries.length} entries (${(jsonString.length / 1024 / 1024).toFixed(1)}MB JSON)`,
+  );
+
+  // Generate variants JSON + thin TypeScript re-export
+  const variantObj: Record<string, { cps: number[]; label: string }[]> = {};
+  for (const [key, variants] of variantMap) {
+    variantObj[key] = variants;
+  }
+  const variantJsonString = JSON.stringify(variantObj);
+  writeFileSync(join(SRC_DIR, "variants.json"), variantJsonString + "\n");
+
+  const variantTsOutput = [
+    "// Auto-generated by scripts/generate-data.ts — do not edit",
+    '// Run "npm run generate" to regenerate',
+    "",
+    'import type { EmojiVariant } from "./types.js";',
+    "// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment",
+    'import data from "./variants.json";',
+    "",
+    "export const variants: Record<string, EmojiVariant[]> = data as Record<",
+    "  string,",
+    "  EmojiVariant[]",
+    ">;",
+    "",
+  ].join("\n");
+  writeFileSync(join(SRC_DIR, "variants.ts"), variantTsOutput);
+  console.log(
+    `  Wrote ${variantMap.size} variant groups (${(variantJsonString.length / 1024).toFixed(0)}KB JSON)`,
   );
 }
 

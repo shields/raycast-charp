@@ -5,6 +5,7 @@ import { buildKeystrokeMap } from "../src/keyboard.js";
 import { FIXTURE_LAYOUT_PATH } from "./helpers.js";
 
 const JSON_PATH = join(import.meta.dirname, "..", "src", "characters.json");
+const VARIANT_PATH = join(import.meta.dirname, "..", "src", "variants.json");
 
 describe("benchmark", () => {
   it("parses character JSON in <100ms", () => {
@@ -53,15 +54,32 @@ describe("benchmark", () => {
     expect(elapsed).toBeLessThan(20);
   });
 
+  it("parses variants JSON in <50ms", () => {
+    const raw = readFileSync(VARIANT_PATH, "utf-8");
+
+    const start = performance.now();
+    const data = JSON.parse(raw) as Record<string, unknown[]>;
+    const elapsed = performance.now() - start;
+
+    const groups = Object.keys(data).length;
+    console.log(
+      `Variants JSON.parse: ${elapsed.toFixed(2)}ms (${String(groups)} groups, ${(raw.length / 1024).toFixed(0)}KB)`,
+    );
+    expect(elapsed).toBeLessThan(50);
+    expect(groups).toBeGreaterThan(100);
+  });
+
   it("reports memory footprint", () => {
     const raw = readFileSync(JSON_PATH, "utf-8");
     const data = JSON.parse(raw) as unknown[];
+    const variantRaw = readFileSync(VARIANT_PATH, "utf-8");
     const xml = readFileSync(FIXTURE_LAYOUT_PATH, "utf-8");
     const keystrokeMap = buildKeystrokeMap(xml);
 
     const keystrokeSize = JSON.stringify([...keystrokeMap.entries()]).length;
 
     console.log(`Character data: ~${(raw.length / 1024 / 1024).toFixed(1)}MB`);
+    console.log(`Variant data: ~${(variantRaw.length / 1024).toFixed(0)}KB`);
     console.log(`Keystroke map: ~${(keystrokeSize / 1024).toFixed(1)}KB`);
     console.log(
       `Total entries: ${String(data.length)} characters, ${String(keystrokeMap.size)} keystrokes`,

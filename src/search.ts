@@ -17,8 +17,13 @@ export const MAX_RESULTS = 200;
  */
 export function scoreMatch(entry: CharacterEntry, terms: string[]): number {
   const nameWords = entry.name.toLowerCase().split(/[\s-]+/);
-  const char = String.fromCodePoint(entry.cp);
-  const hex = entry.cp.toString(16).padStart(4, "0");
+  const cps = entry.cps;
+  const char = cps
+    ? String.fromCodePoint(...cps)
+    : String.fromCodePoint(entry.cp);
+  const hexValues = cps
+    ? cps.map((cp) => cp.toString(16).padStart(4, "0"))
+    : [entry.cp.toString(16).padStart(4, "0")];
 
   let minScore = Infinity;
 
@@ -66,8 +71,8 @@ export function scoreMatch(entry: CharacterEntry, terms: string[]): number {
       termScore = 20;
     }
 
-    // Hex code point match
-    if (termScore < 20 && hex.includes(term)) {
+    // Hex code point match (any code point in sequence)
+    if (termScore < 20 && hexValues.some((h) => h.includes(term))) {
       termScore = 20;
     }
 
