@@ -74,6 +74,12 @@ The "Copy Character" action uses a callback (`Clipboard.copy()` at runtime)
 instead of `Action.CopyToClipboard` to avoid placing the raw character in the
 render tree.
 
+A secondary consequence: variation selector presentation (text U+FE0E vs emoji
+U+FE0F) can only be shown for BMP characters, where raw characters are used
+directly. Non-BMP characters use HTML character references, and the markdown
+renderer does not combine an HTML entity with a following variation selector
+into a variation sequence — it treats them as separate characters.
+
 ## Conventions
 
 - TypeScript with strict mode and `noUncheckedIndexedAccess`

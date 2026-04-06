@@ -17,6 +17,7 @@ const SOURCES: Record<string, string> = {
   "NameAliases.txt": `${UCD_BASE}/NameAliases.txt`,
   "Blocks.txt": `${UCD_BASE}/Blocks.txt`,
   "emoji-test.txt": `${EMOJI_BASE}/emoji-test.txt`,
+  "emoji-variation-sequences.txt": `${UCD_BASE}/emoji/emoji-variation-sequences.txt`,
 };
 
 // CJK Unified Ideograph ranges to exclude
@@ -278,6 +279,16 @@ const BOOSTED_CHARS = new Map<number, number>([
   [0x2021, 158], // ‡
 ]);
 
+function parseEmojiVariationSequences(text: string): Set<number> {
+  const cps = new Set<number>();
+  for (const line of text.split("\n")) {
+    if (line === "" || line.startsWith("#")) continue;
+    const match = /^([0-9A-Fa-f]+)\s+FE0[EF]/.exec(line);
+    if (match) cps.add(Number.parseInt(match[1]!, 16));
+  }
+  return cps;
+}
+
 function parseEmojiTest(text: string): Map<number, number> {
   const emojiOrder = new Map<number, number>();
   let rank = 150; // Emoji start below the top symbols
@@ -339,6 +350,9 @@ async function main(): Promise<void> {
   const aliases = parseNameAliases(fileMap.get("NameAliases.txt")!);
   const blockRanges = parseBlocks(fileMap.get("Blocks.txt")!);
   const emojiOrder = parseEmojiTest(fileMap.get("emoji-test.txt")!);
+  const variationCps = parseEmojiVariationSequences(
+    fileMap.get("emoji-variation-sequences.txt")!,
+  );
 
   console.log(`  ${rawChars.length} characters parsed (CJK excluded)`);
 
@@ -349,6 +363,7 @@ async function main(): Promise<void> {
     keywords: string[];
     cat: string;
     score: number;
+    vs?: true;
   }[] = [];
 
   for (const raw of rawChars) {
@@ -399,6 +414,7 @@ async function main(): Promise<void> {
       keywords,
       cat: raw.cat,
       score,
+      ...(variationCps.has(raw.cp) && { vs: true }),
     });
   }
 
@@ -420,6 +436,7 @@ async function main(): Promise<void> {
     name: e.name,
     keywords: e.keywords,
     cat: e.cat,
+    ...(e.vs && { vs: true }),
   }));
   const jsonString = JSON.stringify(jsonData);
   const jsonPath = join(PROJECT_ROOT, "src", "characters.json");

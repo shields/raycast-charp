@@ -160,6 +160,13 @@ function CharacterItem({
     "",
     `\`${codePoint}\`  \`${htmlEntity}\``,
   ];
+  // Non-BMP characters use HTML entities (&#xNNNN;) to avoid the Raycast JSON
+  // crash, but HTML entities don't form variation sequences with a following
+  // variation selector — the renderer processes them as separate characters.
+  if (entry.vs && entry.cp <= 0xffff) {
+    const ch = String.fromCodePoint(entry.cp);
+    lines.push("", `Text: ${ch}\uFE0E \u00A0 Emoji: ${ch}\uFE0F`);
+  }
   if (entry.keywords.length > 0) {
     lines.push("", entry.keywords.join(", "));
   }

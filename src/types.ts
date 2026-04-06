@@ -7,6 +7,8 @@ export interface CharacterEntry {
   keywords: string[];
   /** General category (Lu, Ll, So, etc.) */
   cat: string;
+  /** Has emoji variation sequences (text U+FE0E / emoji U+FE0F) */
+  vs?: true;
 }
 
 export interface KeystrokeDescription {
