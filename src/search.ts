@@ -4,18 +4,21 @@ export const MAX_RESULTS = 200;
 
 /**
  * Score how well an entry matches the query terms. Higher = better match.
- * Returns 0 for no match.
+ * Returns 0 when there are no terms or any term fails to match.
  *
  * Scoring tiers:
- *   100 — the character itself equals the full query
+ *   100 — the character itself equals a term
  *    80 — a name word exactly equals a term
  *    60 — a name word starts with a term
  *    40 — a keyword word starts with a term
- *    20 — substring match in name or keywords
+ *    20 — substring match in name or keywords, or a code point hex contains a
+ *         term
  *
  * Final score = minimum term score (weakest link), so all terms must match.
  */
 export function scoreMatch(entry: CharacterEntry, terms: string[]): number {
+  if (terms.length === 0) return 0;
+
   const nameWords = entry.name.toLowerCase().split(/[\s-]+/);
   const cps = entry.cps;
   const char = cps
