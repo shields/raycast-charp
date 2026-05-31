@@ -4,7 +4,7 @@
   "title": "Character Picker",
   "description": "Unicode character picker with fuzzy search, popularity ranking, and keyboard layout awareness",
   "icon": "icon.png",
-  "author": "shields",
+  "author": "michael_shields",
   "platforms": [
     "macOS"
   ],
