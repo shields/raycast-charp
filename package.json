@@ -44,6 +44,7 @@
     "fix-lint": "ray lint --fix && prettier --write .",
     "fmt": "prettier --write .",
     "generate": "npx tsx scripts/generate-data.ts",
+    "icon": "npx tsx scripts/generate-icon.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "pretest": "npm run generate",
     "test": "vitest run"

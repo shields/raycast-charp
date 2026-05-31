@@ -1,4 +1,4 @@
-.PHONY: build test lint fmt dev generate typecheck check
+.PHONY: build test lint fmt dev generate icon typecheck check
 
 build: generate
 	npm run build
@@ -23,3 +23,6 @@ dev:
 
 generate:
 	npx tsx scripts/generate-data.ts
+
+icon:
+	npx tsx scripts/generate-icon.ts
