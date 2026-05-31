@@ -68,4 +68,13 @@ describe("scoreMatch with multi-codepoint entries", () => {
     // "country" starts a keyword word but not a name word
     expect(scoreMatch(flagEntry, ["country"])).toBe(40);
   });
+
+  it("scores 20 for a hex code point match on any codepoint", () => {
+    // Second code point 1F1F7 is matched only via hex, not name/keywords
+    expect(scoreMatch(flagEntry, ["1f1f7"])).toBe(20);
+  });
+
+  it("returns 0 for no terms", () => {
+    expect(scoreMatch(flagEntry, [])).toBe(0);
+  });
 });
