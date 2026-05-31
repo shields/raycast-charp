@@ -74,8 +74,13 @@ describe("generated characters.json", () => {
   });
 
   it("has reasonable total entry count", () => {
-    expect(characters.length).toBeGreaterThan(63000);
-    expect(characters.length).toBeLessThan(65000);
+    expect(characters.length).toBeGreaterThan(55000);
+    expect(characters.length).toBeLessThan(62000);
+  });
+
+  it("excludes CJK Unified Ideographs", () => {
+    const cjk = characters.filter((e) => e.name.startsWith("<CJK Ideograph"));
+    expect(cjk).toEqual([]);
   });
 
   it("does not include VS16-only pairs as sequence entries", () => {

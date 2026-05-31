@@ -21,24 +21,14 @@ const SOURCES: Record<string, string> = {
   "emoji-variation-sequences.txt": `${UCD_BASE}/emoji/emoji-variation-sequences.txt`,
 };
 
-// CJK Unified Ideograph ranges to exclude
-const CJK_RANGES: [number, number][] = [
-  [0x4e00, 0x9fff],
-  [0x3400, 0x4dbf],
-  [0x20000, 0x2a6df],
-  [0x2a700, 0x2b739],
-  [0x2b740, 0x2b81d],
-  [0x2b820, 0x2cea1],
-  [0x2ceb0, 0x2ebe0],
-  [0x30000, 0x3134a],
-  [0x31350, 0x323af],
-];
+// CJK Unified Ideographs are allocated as First/Last ranges named
+// "<CJK Ideograph...>" (the base ideograph block plus its extensions). They are
+// excluded wholesale to keep the picker small. Detecting them by name keeps
+// this in sync with the UCD automatically; a hardcoded numeric table drifts out
+// of date every Unicode version as new extensions are added.
+const CJK_RANGE_NAME = /^<CJK Ideograph/;
 
-function isCJK(cp: number): boolean {
-  return CJK_RANGES.some(([lo, hi]) => cp >= lo && cp <= hi);
-}
-
-// Categories to skip: surrogates, private use, unassigned control-like
+// Categories to skip: surrogates and private use.
 const SKIP_CATEGORIES = new Set(["Cs", "Co"]);
 
 async function download(name: string, url: string): Promise<string> {
@@ -81,18 +71,19 @@ function parseUnicodeData(text: string): RawChar[] {
     }
     if (name.endsWith(", Last>")) {
       if (rangeStart) {
-        // For ranges, we'd generate every character — but we skip CJK etc.
-        // Only expand ranges for non-CJK, non-skip categories
-        if (!SKIP_CATEGORIES.has(cat)) {
+        // Expand the range into individual characters, skipping CJK Unified
+        // Ideographs (too numerous to be useful) and skip categories.
+        if (
+          !SKIP_CATEGORIES.has(cat) &&
+          !CJK_RANGE_NAME.test(rangeStart.name)
+        ) {
           for (let c = rangeStart.cp; c <= cp; c++) {
-            if (!isCJK(c)) {
-              chars.push({
-                cp: c,
-                name: rangeStart.name,
-                cat,
-                oldName,
-              });
-            }
+            chars.push({
+              cp: c,
+              name: rangeStart.name,
+              cat,
+              oldName,
+            });
           }
         }
         rangeStart = null;
@@ -101,7 +92,6 @@ function parseUnicodeData(text: string): RawChar[] {
     }
 
     if (SKIP_CATEGORIES.has(cat)) continue;
-    if (isCJK(cp)) continue;
 
     chars.push({ cp, name, cat, oldName });
   }
