@@ -107,7 +107,6 @@ interface ParsedLayout {
   keyMaps: Map<number, Map<number, string>>;
   keyActions: Map<number, Map<number, string>>;
   actionDefs: Map<string, ActionWhen[]>;
-  terminators: Map<string, string>;
 }
 
 function parseKeylayout(xml: string): ParsedLayout {
@@ -125,7 +124,6 @@ function parseKeylayout(xml: string): ParsedLayout {
       keyMaps: new Map(),
       keyActions: new Map(),
       actionDefs: new Map(),
-      terminators: new Map(),
     };
   }
 
@@ -178,18 +176,7 @@ function parseKeylayout(xml: string): ParsedLayout {
     actionDefs.set(id, whens);
   }
 
-  // Parse terminators
-  const terminators = new Map<string, string>();
-  const rawTerminators = (
-    keyboard["terminators"] as Record<string, unknown> | undefined
-  )?.["when"] as WhenElement | WhenElement[] | undefined;
-  for (const t of toArray(rawTerminators)) {
-    if (t["@_output"] !== undefined) {
-      terminators.set(String(t["@_state"]), String(t["@_output"]));
-    }
-  }
-
-  return { keyMaps, keyActions, actionDefs, terminators };
+  return { keyMaps, keyActions, actionDefs };
 }
 
 export function buildKeystrokeMap(
@@ -280,22 +267,24 @@ export function buildKeystrokeMap(
     }
   }
 
-  // Build reverse index: state name → trigger info
+  // Build reverse index: state name → trigger info, preferring the
+  // simplest modifier (lowest priority) when a state is reachable from
+  // several layers.
   const stateToTrigger = new Map<
     string,
-    { modifierLabel: string; keyLabel: string }
+    { modifierLabel: string; keyLabel: string; priority: number }
   >();
   for (const [, dkt] of deadKeyTriggers) {
     for (const trigger of dkt.triggers) {
       const mod = MODIFIER_MAP[trigger.modifierIndex];
       if (!mod) continue;
-      // Prefer simplest modifier trigger for each state
-      if (!stateToTrigger.has(dkt.state)) {
-        stateToTrigger.set(dkt.state, {
-          modifierLabel: mod.label,
-          keyLabel: labelFor(trigger.keyCode),
-        });
-      }
+      const existing = stateToTrigger.get(dkt.state);
+      if (existing && existing.priority <= mod.priority) continue;
+      stateToTrigger.set(dkt.state, {
+        modifierLabel: mod.label,
+        keyLabel: labelFor(trigger.keyCode),
+        priority: mod.priority,
+      });
     }
   }
 
