@@ -1,0 +1,145 @@
+# Charp — Character Picker
+
+A [Raycast](https://raycast.com) extension for finding and inserting Unicode
+characters.
+
+## Features
+
+- **Fuzzy, word-aware search** — match on Unicode names, aliases, block names,
+  emoji keywords, or hex code points. `right arrow`, `→`, and `2192` all find
+  `→ RIGHTWARDS ARROW`.
+- **Smart ranking** — recently used characters first, then characters your
+  active keyboard layout can type, then a curated popularity order. The
+  characters you reach for surface to the top over time.
+- **Keyboard layout awareness** — for characters reachable on your installed
+  macOS layout, Charp shows the keystroke (e.g. `⌥E E` → `é`), including dead
+  key sequences.
+- **Emoji, variants, and sequences** — skin-tone and gender variants, country
+  flags, keycaps, and ZWJ sequences, plus text/emoji presentation comparison
+  (U+FE0E vs U+FE0F).
+- **Detail panel** — large character preview, official name, code point(s),
+  aliases/keywords, and the keystroke to type it.
+
+## Requirements
+
+- macOS with [Raycast](https://raycast.com) installed
+- [Node.js](https://nodejs.org) 22+ and npm (for building from source)
+
+## Installation
+
+Charp is not published to the Raycast Store; build and import it locally.
+
+```bash
+git clone https://github.com/shields/raycast-charp.git
+cd raycast-charp
+npm install
+make dev          # generates data, then runs `ray develop` with live reload
+```
+
+`make dev` registers the extension with Raycast and reloads on changes. To
+produce a standalone build instead, run `make build`.
+
+The first run downloads the Unicode data files (see [Data](#data-and-licensing))
+and generates `src/characters.json`; this takes a few seconds.
+
+## Usage
+
+Open Raycast and run **Pick Character**, then start typing. Select a result to
+act on it:
+
+| Action          | Shortcut | Result                                      |
+| --------------- | -------- | ------------------------------------------- |
+| Paste Character | `↵`      | Pastes the character into the frontmost app |
+| Copy Character  | `⌘C`     | Copies the character to the clipboard       |
+| Copy Code Point | `⇧⌘C`    | Copies the code point(s), e.g. `U+2192`     |
+
+Searching by symbol works too: paste or type `©`, `½`, or `→` directly to find
+that character.
+
+## How it works
+
+The runtime is a single Raycast `view` command (`src/pick-character.tsx`) backed
+by a generated character database and a handful of focused modules.
+
+- **Data pipeline** (`scripts/generate-data.ts`) downloads the Unicode Character
+  Database and emoji data, parses it, computes a popularity score per character,
+  and writes `src/characters.json` (~51k entries; CJK and Tangut ideographs are
+  excluded because their placeholder names carry no search value). The JSON is
+  imported at runtime via the thin `src/characters.ts` re-export.
+- **Search** (`src/search.ts`) tokenizes the query and each name/keyword the
+  same way, then scores matches with weakest-link semantics across five tiers
+  (exact character → exact name word → name prefix → keyword prefix →
+  substring/hex). Results are bucketed by tier, preserving rank order within
+  each bucket.
+- **Ranking** (`src/pick-character.tsx`) orders results in three tiers: recently
+  used (with linear decay scoring from `src/recency.ts`, persisted via Raycast
+  `LocalStorage`) > keyboard-accessible characters > the static popularity order
+  from the generated data.
+- **Keyboard layout** (`src/keyboard.ts`) reads your active macOS `.keylayout`
+  XML file and builds a map from characters to keystroke labels, handling
+  modifier layers and dead key state machines so the labels match your actual
+  keyboard.
+- **Non-BMP rendering** (`src/svg.ts`) sidesteps a Raycast bug where the Swift
+  JSON parser crashes on characters above U+FFFF (emoji): the detail header
+  renders each character as an SVG `<text>` element using XML character
+  references, base64-encoded into a pure-ASCII data URI. Plain-text props fall
+  back to `U+XXXX` labels for non-BMP characters.
+
+For a deeper tour of the architecture, see
+[docs/architecture.md](docs/architecture.md).
+
+## Development
+
+```bash
+make dev          # generate data + `ray develop` (live reload)
+make build        # generate data + `ray build`
+make test         # run the vitest suite
+make lint         # eslint + prettier --check
+make fmt          # prettier --write
+make typecheck    # tsc --noEmit
+make check        # lint + typecheck + test
+make generate     # regenerate src/characters.json from the Unicode data files
+```
+
+Run a single test file or pattern:
+
+```bash
+npx vitest run test/keyboard.test.ts
+npx vitest run -t "maps dead key"
+```
+
+`src/characters.{ts,json}` and `src/variants.{ts,json}` are generated artifacts
+and are git-ignored. Edit `scripts/generate-data.ts` and run `make generate`
+rather than editing them directly. The `data/` directory is a download cache for
+the raw Unicode files; delete it to force a re-download.
+
+The repository uses a Lefthook pre-commit hook that formats Markdown with
+Prettier and runs the test suite with coverage.
+
+## Project structure
+
+```
+src/
+  pick-character.tsx   Raycast command: search, rank, render, actions
+  search.ts            query tokenization and match scoring
+  keyboard.ts          parse the active .keylayout into keystroke labels
+  recency.ts           recently-used tracking and recency boosts
+  svg.ts               SVG/data-URI rendering for non-BMP characters
+  types.ts             shared types and code-point helpers
+  characters.{ts,json} generated character database (git-ignored)
+  variants.{ts,json}   generated emoji-variant data (git-ignored)
+scripts/
+  generate-data.ts     download + parse UCD/emoji data → generated artifacts
+test/                  vitest suite
+data/                  cached Unicode source files (git-ignored)
+```
+
+## Data and licensing
+
+Character data is generated from the
+[Unicode Character Database](https://www.unicode.org/ucd/) (Unicode 17.0) and
+the [Unicode emoji data files](https://unicode.org/Public/emoji/) (Emoji 16.0).
+Unicode data is distributed under the
+[Unicode License](https://www.unicode.org/license.txt).
+
+This extension is licensed under the MIT License.
