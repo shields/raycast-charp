@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright © 2026 Michael Shields
+// SPDX-License-Identifier: MIT
+
 import { exec } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright © 2026 Michael Shields
+// SPDX-License-Identifier: MIT
+
 import {
   Action,
   ActionPanel,

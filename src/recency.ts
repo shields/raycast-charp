@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright © 2026 Michael Shields
+// SPDX-License-Identifier: MIT
+
 import { LocalStorage } from "@raycast/api";
 import { entryKey } from "./types.js";
 import type { CharacterEntry, RecentEntry } from "./types.js";

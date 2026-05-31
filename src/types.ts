@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright © 2026 Michael Shields
+// SPDX-License-Identifier: MIT
+
 export interface CharacterEntry {
   /** Unicode code point (first code point for multi-codepoint sequences) */
   cp: number;

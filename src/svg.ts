@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright © 2026 Michael Shields
+// SPDX-License-Identifier: MIT
+
 const cache = new Map<string, string>();
 
 /** Markdown image tag rendering a character via SVG. The SVG uses XML

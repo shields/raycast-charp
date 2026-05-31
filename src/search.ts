@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright © 2026 Michael Shields
+// SPDX-License-Identifier: MIT
+
 import type { CharacterEntry } from "./types.js";
 
 export const MAX_RESULTS = 200;

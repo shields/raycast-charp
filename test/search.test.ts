@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright © 2026 Michael Shields
+// SPDX-License-Identifier: MIT
+
 import { describe, expect, it } from "vitest";
 import { characters } from "../src/characters.js";
 import { scoreMatch, searchCharacters } from "../src/search.js";
