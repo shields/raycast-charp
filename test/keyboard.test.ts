@@ -225,6 +225,69 @@ describe("buildKeystrokeMap", () => {
     expect(x).toBeDefined();
     expect(x!.modifiers).toBe("none");
   });
+
+  it("prefers the simplest modifier for a dead key reachable from many layers", () => {
+    // The same dead-key state "acute" is reachable from the shift+option layer
+    // (index 4, priority 4) and the option layer (index 3, priority 2). The
+    // shift+option trigger appears first in XML order, but the resulting label
+    // must use the simpler ⌥ trigger, not ⇧⌥.
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<keyboard group="0" id="0" name="Test" maxout="1">
+  <layouts><layout first="0" last="0" mapSet="m" modifiers="mod"/></layouts>
+  <modifierMap id="mod" defaultIndex="0">
+    <keyMapSelect mapIndex="0"><modifier keys=""/></keyMapSelect>
+    <keyMapSelect mapIndex="3"><modifier keys="anyOption"/></keyMapSelect>
+    <keyMapSelect mapIndex="4"><modifier keys="anyShift anyOption"/></keyMapSelect>
+  </modifierMap>
+  <keyMapSet id="m">
+    <keyMap index="0">
+      <key code="14" output="e"/>
+      <key code="20" output="t"/>
+      <key code="0" action="a_a"/>
+    </keyMap>
+    <keyMap index="4">
+      <key code="20" action="deadAcute"/>
+    </keyMap>
+    <keyMap index="3">
+      <key code="14" action="deadAcute"/>
+    </keyMap>
+  </keyMapSet>
+  <actions>
+    <action id="deadAcute"><when state="none" next="acute"/></action>
+    <action id="a_a">
+      <when state="none" output="a"/>
+      <when state="acute" output="&#x00E1;"/>
+    </action>
+  </actions>
+</keyboard>`;
+    const map = buildKeystrokeMap(xml);
+    const aAcute = map.get("á");
+    expect(aAcute).toBeDefined();
+    expect(aAcute!.deadKey).toBeDefined();
+    expect(aAcute!.deadKey!.trigger).toBe("⌥E");
+    expect(aAcute!.label).toBe("⌥E A");
+  });
+
+  it("uses the first keyMapSet when several are present", () => {
+    // Layouts can carry one keyMapSet per device type. Only the first should
+    // be parsed; the second must be ignored.
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<keyboard group="0" id="0" name="Test" maxout="1">
+  <layouts><layout first="0" last="0" mapSet="ansi" modifiers="mod"/></layouts>
+  <modifierMap id="mod" defaultIndex="0">
+    <keyMapSelect mapIndex="0"><modifier keys=""/></keyMapSelect>
+  </modifierMap>
+  <keyMapSet id="ansi">
+    <keyMap index="0"><key code="0" output="a"/></keyMap>
+  </keyMapSet>
+  <keyMapSet id="iso">
+    <keyMap index="0"><key code="0" output="z"/></keyMap>
+  </keyMapSet>
+</keyboard>`;
+    const map = buildKeystrokeMap(xml);
+    expect(map.get("a")).toBeDefined();
+    expect(map.has("z")).toBe(false);
+  });
 });
 
 describe("loadKeystrokeMap", () => {
@@ -265,5 +328,20 @@ describe("loadKeystrokeMap", () => {
       .mockResolvedValueOnce(MINIMAL_XML as never);
     const map = await loadKeystrokeMap();
     expect(map.size).toBeGreaterThan(0);
+  });
+
+  it("warns and returns the map when a parsed layout is empty", async () => {
+    mockExecResult('"KeyboardLayout Name" = "TestLayout";');
+    // loadKeystrokeMap already console.warns when a layout file is found but
+    // parses to an empty map (see the map.size === 0 branch); this exercises it.
+    // A keyboard element with no usable keys parses to an empty map.
+    vi.mocked(readFile).mockResolvedValueOnce(
+      '<?xml version="1.0"?><keyboard></keyboard>' as never,
+    );
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const map = await loadKeystrokeMap();
+    expect(map.size).toBe(0);
+    expect(warn).toHaveBeenCalledOnce();
+    warn.mockRestore();
   });
 });
