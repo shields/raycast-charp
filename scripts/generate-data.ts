@@ -21,12 +21,14 @@ const SOURCES: Record<string, string> = {
   "emoji-variation-sequences.txt": `${UCD_BASE}/emoji/emoji-variation-sequences.txt`,
 };
 
-// CJK Unified Ideographs are allocated as First/Last ranges named
-// "<CJK Ideograph...>" (the base ideograph block plus its extensions). They are
-// excluded wholesale to keep the picker small. Detecting them by name keeps
-// this in sync with the UCD automatically; a hardcoded numeric table drifts out
-// of date every Unicode version as new extensions are added.
-const CJK_RANGE_NAME = /^<CJK Ideograph/;
+// CJK Unified and Tangut ideographs are allocated as First/Last ranges with
+// placeholder "<...>" names; Tangut additionally has individually-named
+// "TANGUT COMPONENT-NNN" entries. All are excluded: they are too numerous and
+// their placeholder names carry no search value in a picker. Detecting them by
+// name keeps this in sync with the UCD automatically; a hardcoded numeric table
+// drifts out of date every Unicode version as new blocks are added.
+const EXCLUDED_RANGE_NAME = /^<(CJK|Tangut) Ideograph/;
+const EXCLUDED_NAME = /^TANGUT COMPONENT-/;
 
 // Categories to skip: surrogates and private use.
 const SKIP_CATEGORIES = new Set(["Cs", "Co"]);
@@ -75,7 +77,7 @@ function parseUnicodeData(text: string): RawChar[] {
         // Ideographs (too numerous to be useful) and skip categories.
         if (
           !SKIP_CATEGORIES.has(cat) &&
-          !CJK_RANGE_NAME.test(rangeStart.name)
+          !EXCLUDED_RANGE_NAME.test(rangeStart.name)
         ) {
           for (let c = rangeStart.cp; c <= cp; c++) {
             chars.push({
@@ -92,6 +94,7 @@ function parseUnicodeData(text: string): RawChar[] {
     }
 
     if (SKIP_CATEGORIES.has(cat)) continue;
+    if (EXCLUDED_NAME.test(name)) continue;
 
     chars.push({ cp, name, cat, oldName });
   }
@@ -449,7 +452,9 @@ async function main(): Promise<void> {
     fileMap.get("emoji-variation-sequences.txt")!,
   );
 
-  console.log(`  ${rawChars.length} characters parsed (CJK excluded)`);
+  console.log(
+    `  ${rawChars.length} characters parsed (CJK and Tangut excluded)`,
+  );
   console.log(`  ${sequenceEntries.length} emoji sequences`);
   console.log(`  ${variantMap.size} base emoji with variants`);
 

@@ -288,6 +288,121 @@ describe("buildKeystrokeMap", () => {
     expect(map.get("a")).toBeDefined();
     expect(map.has("z")).toBe(false);
   });
+
+  it("derives modifier labels from the layout's modifierMap, not fixed indices", () => {
+    // Indices are deliberately non-conventional: shift on index 2 (caps under
+    // the old hardcoded table) and option on index 5 (caps+option before). An
+    // unrecognized token in the keys list is ignored.
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<keyboard group="0" id="0" name="NonStd" maxout="1">
+  <layouts><layout first="0" last="0" mapSet="m" modifiers="mod"/></layouts>
+  <modifierMap id="mod" defaultIndex="0">
+    <keyMapSelect mapIndex="0"><modifier keys=""/></keyMapSelect>
+    <keyMapSelect mapIndex="2"><modifier keys="anyShift"/></keyMapSelect>
+    <keyMapSelect mapIndex="5"><modifier keys="anyOption junk"/></keyMapSelect>
+    <keyMapSelect mapIndex="6"><modifier/></keyMapSelect>
+  </modifierMap>
+  <keyMapSet id="m">
+    <keyMap index="0"><key code="0" output="a"/></keyMap>
+    <keyMap index="2"><key code="0" output="A"/></keyMap>
+    <keyMap index="5"><key code="1" output="x"/></keyMap>
+    <keyMap index="6"><key code="2" output="n"/></keyMap>
+  </keyMapSet>
+</keyboard>`;
+    const map = buildKeystrokeMap(xml);
+    expect(map.get("a")!.modifiers).toBe("none");
+    expect(map.get("A")!.modifiers).toBe("⇧");
+    expect(map.get("x")!.modifiers).toBe("⌥");
+    // A <modifier> with no keys attribute means no modifiers (base layer).
+    expect(map.get("n")!.modifiers).toBe("none");
+  });
+
+  it("falls back to the first modifierMap and skips control/unparseable indices", () => {
+    // No <layouts>, so the modifierMap reference is unresolved and the first
+    // map wins. A control layer and a non-numeric index are skipped; a
+    // keyMapSelect with several alternatives takes the simplest one.
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<keyboard group="0" id="0" name="Fallback" maxout="1">
+  <modifierMap id="primary" defaultIndex="0">
+    <keyMapSelect mapIndex="0"><modifier keys=""/></keyMapSelect>
+    <keyMapSelect mapIndex="bad"><modifier keys="anyShift"/></keyMapSelect>
+    <keyMapSelect mapIndex="1"><modifier keys="anyControl"/></keyMapSelect>
+    <keyMapSelect mapIndex="2"><modifier keys="anyShift anyOption"/><modifier keys="anyShift"/></keyMapSelect>
+    <keyMapSelect mapIndex="3"><modifier keys="anyShift"/><modifier keys="anyShift anyOption"/></keyMapSelect>
+  </modifierMap>
+  <modifierMap id="other" defaultIndex="0">
+    <keyMapSelect mapIndex="0"><modifier keys="anyOption"/></keyMapSelect>
+  </modifierMap>
+  <keyMapSet id="m">
+    <keyMap index="0"><key code="0" output="a"/></keyMap>
+    <keyMap index="1"><key code="1" output="c"/></keyMap>
+    <keyMap index="2"><key code="2" output="b"/></keyMap>
+    <keyMap index="3"><key code="3" output="d"/></keyMap>
+  </keyMapSet>
+</keyboard>`;
+    const map = buildKeystrokeMap(xml);
+    expect(map.get("a")!.modifiers).toBe("none");
+    expect(map.has("c")).toBe(false);
+    expect(map.get("b")!.modifiers).toBe("⇧");
+    expect(map.get("d")!.modifiers).toBe("⇧");
+  });
+
+  it("renders a non-BMP key label as its code point", () => {
+    // A base-layer key whose output is non-BMP (U+1D400) must not put that
+    // character into a label (it would crash Raycast's JSON parser).
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<keyboard group="0" id="0" name="NonBMP" maxout="2">
+  <layouts><layout first="0" last="0" mapSet="m" modifiers="mod"/></layouts>
+  <modifierMap id="mod" defaultIndex="0">
+    <keyMapSelect mapIndex="0"><modifier keys=""/></keyMapSelect>
+    <keyMapSelect mapIndex="1"><modifier keys="anyShift"/></keyMapSelect>
+  </modifierMap>
+  <keyMapSet id="m">
+    <keyMap index="0"><key code="0" output="&#x1D400;"/></keyMap>
+    <keyMap index="1"><key code="0" output="z"/></keyMap>
+  </keyMapSet>
+</keyboard>`;
+    const map = buildKeystrokeMap(xml);
+    expect(map.get(String.fromCodePoint(0x1d400))!.label).toBe("U+1D400");
+    expect(map.get("z")!.label).toBe("⇧U+1D400");
+  });
+
+  it("yields an empty map when the keyboard has no modifierMap", () => {
+    // With no <modifierMap>, no keyMap index has a known modifier, so every
+    // key is skipped and the result is empty.
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<keyboard group="0" id="0" name="NoMods" maxout="1">
+  <keyMapSet id="m">
+    <keyMap index="0"><key code="0" output="a"/></keyMap>
+  </keyMapSet>
+</keyboard>`;
+    expect(buildKeystrokeMap(xml).size).toBe(0);
+  });
+
+  it("derives key labels from the real base layer when it is not index 0", () => {
+    // Some non-Latin layouts (Greek, Arabic, …) put a Latin command layer at
+    // index 0 and the real unmodified layer at another index. Keycap labels
+    // must come from the real base layer, not index 0.
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<keyboard group="0" id="0" name="Greekish" maxout="1">
+  <layouts><layout first="0" last="0" mapSet="m" modifiers="mod"/></layouts>
+  <modifierMap id="mod" defaultIndex="1">
+    <keyMapSelect mapIndex="0"><modifier keys="command"/></keyMapSelect>
+    <keyMapSelect mapIndex="1"><modifier keys=""/></keyMapSelect>
+    <keyMapSelect mapIndex="2"><modifier keys="anyShift"/></keyMapSelect>
+  </modifierMap>
+  <keyMapSet id="m">
+    <keyMap index="0"><key code="0" output="s"/></keyMap>
+    <keyMap index="1"><key code="0" output="σ"/></keyMap>
+    <keyMap index="2"><key code="0" output="Σ"/></keyMap>
+  </keyMapSet>
+</keyboard>`;
+    const map = buildKeystrokeMap(xml);
+    expect(map.has("s")).toBe(false); // index 0 is a command layer, skipped
+    expect(map.get("σ")!.modifiers).toBe("none");
+    expect(map.get("σ")!.label).toBe("Σ"); // keycap from the real base layer
+    expect(map.get("Σ")!.label).toBe("⇧Σ");
+  });
 });
 
 describe("loadKeystrokeMap", () => {

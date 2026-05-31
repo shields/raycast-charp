@@ -30,14 +30,23 @@ function formatHTMLEntity(cp: number): string {
   return `&#x${cp.toString(16).toUpperCase()};`;
 }
 
+function isControlCodePoint(cp: number): boolean {
+  return cp < 0x20 || (cp >= 0x7f && cp < 0xa0);
+}
+
 /** Render-tree-safe display for plain-text props. Non-BMP characters
  * crash Raycast's Swift JSON parser (raycast/extensions#17053). */
 function characterDisplay(entry: CharacterEntry): string {
   if (entry.cps) {
+    // A sequence is safe to render literally only when every code point is in
+    // the BMP; a single non-BMP code point would crash the parser.
+    if (entry.cps.every((cp) => cp <= 0xffff && !isControlCodePoint(cp))) {
+      return String.fromCodePoint(...entry.cps);
+    }
     return `${formatCodePoint(entry.cps[0]!)}…`;
   }
   const cp = entry.cp;
-  if (cp < 0x20 || (cp >= 0x7f && cp < 0xa0)) {
+  if (isControlCodePoint(cp)) {
     return `[${formatCodePoint(cp)}]`;
   }
   if (cp > 0xffff) {

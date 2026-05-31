@@ -84,8 +84,11 @@ render tree.
 ## Conventions
 
 - TypeScript with strict mode and `noUncheckedIndexedAccess`
-- ESNext target, NodeNext module resolution
-- `.js` extensions in imports (required by NodeNext)
+- ESNext target, Bundler module resolution (the extension is esbuild-bundled by
+  `ray build`; Bundler also permits `import.meta`, which NodeNext rejects unless
+  the package is `"type": "module"`)
+- `.js` extensions in imports (a NodeNext-era convention, still used and
+  resolved under Bundler)
 - Prettier with `proseWrap: always`
 - Lefthook pre-commit hook formats `.md` files with prettier
 - `src/characters.ts` and `src/characters.json` are generated — edit the

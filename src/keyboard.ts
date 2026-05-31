@@ -11,14 +11,26 @@ interface ModifierInfo {
   priority: number;
 }
 
-const MODIFIER_MAP: Record<number, ModifierInfo> = {
-  0: { label: "", priority: 0 },
-  1: { label: "⇧", priority: 1 },
-  2: { label: "⇪", priority: 3 },
-  3: { label: "⌥", priority: 2 },
-  4: { label: "⇧⌥", priority: 4 },
-  5: { label: "⇪⌥", priority: 5 },
-  7: { label: "", priority: 10 },
+type Modifier = "shift" | "option" | "control" | "caps" | "command";
+
+// Order in which modifier symbols are concatenated into a label (matches the
+// macOS convention used elsewhere, e.g. ⇧⌥ and ⇪⌥).
+const MODIFIER_DISPLAY: { mod: Modifier; symbol: string }[] = [
+  { mod: "shift", symbol: "⇧" },
+  { mod: "caps", symbol: "⇪" },
+  { mod: "control", symbol: "⌃" },
+  { mod: "option", symbol: "⌥" },
+  { mod: "command", symbol: "⌘" },
+];
+
+// Lower rank = simpler modifier, preferred when a character is reachable from
+// several layers. Combinations sort after singles (10 added per modifier).
+const MODIFIER_RANK: Record<Modifier, number> = {
+  shift: 1,
+  option: 2,
+  caps: 3,
+  control: 4,
+  command: 5,
 };
 
 // Parsed representations of .keylayout XML elements
@@ -40,6 +52,20 @@ interface KeyMapElement {
   "@_index": string;
   key: KeyElement | KeyElement[];
 }
+interface ModifierElement {
+  "@_keys"?: string;
+}
+interface KeyMapSelectElement {
+  "@_mapIndex": string;
+  modifier: ModifierElement | ModifierElement[];
+}
+interface ModifierMapElement {
+  "@_id"?: string;
+  keyMapSelect: KeyMapSelectElement | KeyMapSelectElement[];
+}
+interface LayoutElement {
+  "@_modifiers"?: string;
+}
 
 interface ActionWhen {
   state: string;
@@ -60,29 +86,115 @@ function formatKeystroke(modLabel: string, keyLabel: string): string {
   return modLabel ? `${modLabel}${keyLabel}` : keyLabel;
 }
 
+// A non-BMP character in a key label would reach Raycast's render tree and
+// crash its Swift JSON parser (see CLAUDE.md), so show its code point instead.
+function keyLabelFor(output: string): string {
+  const cp = output.codePointAt(0)!;
+  if (cp > 0xffff) {
+    return `U+${cp.toString(16).toUpperCase().padStart(4, "0")}`;
+  }
+  return output.toUpperCase();
+}
+
+function classifyModifier(token: string): Modifier | null {
+  const lower = token.toLowerCase();
+  const mods: Modifier[] = ["shift", "option", "control", "command", "caps"];
+  for (const mod of mods) {
+    if (lower.includes(mod)) return mod;
+  }
+  return null;
+}
+
+// A keyMapSelect's `keys` attribute is a space-separated list of modifier
+// tokens (e.g. "anyShift anyOption"). A trailing "?" marks a modifier optional
+// (don't-care), which we ignore when deriving a label.
+function modifiersFromKeys(keys: string): Set<Modifier> {
+  const mods = new Set<Modifier>();
+  for (const token of keys.trim().split(/\s+/)) {
+    if (token === "" || token.endsWith("?")) continue;
+    const mod = classifyModifier(token);
+    if (mod) mods.add(mod);
+  }
+  return mods;
+}
+
+function modifierInfo(mods: Set<Modifier>): ModifierInfo {
+  const label = MODIFIER_DISPLAY.filter(({ mod }) => mods.has(mod))
+    .map(({ symbol }) => symbol)
+    .join("");
+  let priority = mods.size * 10;
+  for (const mod of mods) priority += MODIFIER_RANK[mod];
+  return { label, priority };
+}
+
+// Derive, per keyMap index, the modifier label/priority from the layout's own
+// <modifierMap> rather than assuming conventional index meanings. Command and
+// control layers are application shortcuts, not character input, so their
+// indices are left unmapped (and thus skipped downstream).
+function parseModifierMap(
+  keyboard: Record<string, unknown>,
+): Map<number, ModifierInfo> {
+  const result = new Map<number, ModifierInfo>();
+  const modMaps = toArray(
+    keyboard["modifierMap"] as
+      | ModifierMapElement
+      | ModifierMapElement[]
+      | undefined,
+  );
+  if (modMaps.length === 0) return result;
+
+  // A layout selects its modifierMap by id; fall back to the first map.
+  const layouts = toArray(
+    (keyboard["layouts"] as Record<string, unknown> | undefined)?.["layout"] as
+      | LayoutElement
+      | LayoutElement[]
+      | undefined,
+  );
+  const wantedId = layouts[0]?.["@_modifiers"];
+  const modMap = modMaps.find((m) => m["@_id"] === wantedId) ?? modMaps[0]!;
+
+  for (const sel of toArray(modMap.keyMapSelect)) {
+    const index = Number.parseInt(String(sel["@_mapIndex"]), 10);
+    if (Number.isNaN(index)) continue;
+    let best: ModifierInfo | undefined;
+    for (const modifier of toArray(sel.modifier)) {
+      const mods = modifiersFromKeys(String(modifier["@_keys"] ?? ""));
+      if (mods.has("command") || mods.has("control")) continue;
+      const info = modifierInfo(mods);
+      if (!best || info.priority < best.priority) best = info;
+    }
+    if (best) result.set(index, best);
+  }
+  return result;
+}
+
 /**
- * Derive key labels from the base layer of the layout itself,
- * so labels match the user's actual keyboard (AZERTY, QWERTZ, etc.).
+ * Derive key labels from the base (unmodified) layer of the layout itself, so
+ * labels match the user's actual keyboard (AZERTY, QWERTZ, etc.). The base
+ * layer is not always keyMap index 0 — some layouts (e.g. Greek, Arabic) put a
+ * Latin command layer there — so the caller passes the index whose modifier
+ * set is empty.
  */
 function deriveKeyLabels(
   keyMaps: Map<number, Map<number, string>>,
   keyActions: Map<number, Map<number, string>>,
   actionDefs: Map<string, ActionWhen[]>,
+  baseIndex: number,
 ): Map<number, string> {
   const labels = new Map<number, string>();
 
-  // Direct outputs from the base layer (index 0)
-  const baseOutputs = keyMaps.get(0);
+  // Direct outputs from the base layer
+  const baseOutputs = keyMaps.get(baseIndex);
   if (baseOutputs) {
     for (const [code, output] of baseOutputs) {
       const cp = output.codePointAt(0);
       if (cp === undefined || isControlChar(cp)) continue;
-      labels.set(code, output.toUpperCase());
+      labels.set(code, keyLabelFor(output));
     }
   }
 
   // Also resolve action-based keys on the base layer (state="none" output)
-  const baseActions = keyActions.get(0);
+  const baseActions = keyActions.get(baseIndex);
   if (baseActions) {
     for (const [code, actionId] of baseActions) {
       if (labels.has(code)) continue;
@@ -94,7 +206,7 @@ function deriveKeyLabels(
       if (noneOutput?.output) {
         const cp = noneOutput.output.codePointAt(0);
         if (cp === undefined || isControlChar(cp)) continue;
-        labels.set(code, noneOutput.output.toUpperCase());
+        labels.set(code, keyLabelFor(noneOutput.output));
       }
     }
   }
@@ -107,6 +219,7 @@ interface ParsedLayout {
   keyMaps: Map<number, Map<number, string>>;
   keyActions: Map<number, Map<number, string>>;
   actionDefs: Map<string, ActionWhen[]>;
+  modifiers: Map<number, ModifierInfo>;
 }
 
 function parseKeylayout(xml: string): ParsedLayout {
@@ -124,6 +237,7 @@ function parseKeylayout(xml: string): ParsedLayout {
       keyMaps: new Map(),
       keyActions: new Map(),
       actionDefs: new Map(),
+      modifiers: new Map(),
     };
   }
 
@@ -176,14 +290,23 @@ function parseKeylayout(xml: string): ParsedLayout {
     actionDefs.set(id, whens);
   }
 
-  return { keyMaps, keyActions, actionDefs };
+  return {
+    keyMaps,
+    keyActions,
+    actionDefs,
+    modifiers: parseModifierMap(keyboard),
+  };
 }
 
 export function buildKeystrokeMap(
   keylayoutXml: string,
 ): Map<string, KeystrokeDescription> {
-  const { keyMaps, keyActions, actionDefs } = parseKeylayout(keylayoutXml);
-  const keyLabels = deriveKeyLabels(keyMaps, keyActions, actionDefs);
+  const { keyMaps, keyActions, actionDefs, modifiers } =
+    parseKeylayout(keylayoutXml);
+  // The unmodified layer is the keyMap index whose modifier set is empty.
+  const baseIndex =
+    [...modifiers].find(([, info]) => info.label === "")?.[0] ?? 0;
+  const keyLabels = deriveKeyLabels(keyMaps, keyActions, actionDefs, baseIndex);
   const map = new Map<string, KeystrokeDescription>();
 
   function labelFor(code: number): string {
@@ -205,8 +328,8 @@ export function buildKeystrokeMap(
     if (!existing) {
       directMap.set(output, { modifierIndex: modIndex, keyCode });
     } else {
-      const oldPri = MODIFIER_MAP[existing.modifierIndex]!.priority;
-      const newPri = MODIFIER_MAP[modIndex]!.priority;
+      const oldPri = modifiers.get(existing.modifierIndex)!.priority;
+      const newPri = modifiers.get(modIndex)!.priority;
       if (newPri < oldPri) {
         directMap.set(output, { modifierIndex: modIndex, keyCode });
       }
@@ -215,7 +338,7 @@ export function buildKeystrokeMap(
 
   // Collect direct outputs from keyMaps
   for (const [modIndex, outputs] of keyMaps) {
-    if (MODIFIER_MAP[modIndex] === undefined) continue;
+    if (!modifiers.has(modIndex)) continue;
     for (const [keyCode, output] of outputs) {
       addDirect(output, modIndex, keyCode);
     }
@@ -223,7 +346,7 @@ export function buildKeystrokeMap(
 
   // Collect direct outputs from actions (state="none" → output)
   for (const [modIndex, actions] of keyActions) {
-    if (MODIFIER_MAP[modIndex] === undefined) continue;
+    if (!modifiers.has(modIndex)) continue;
     for (const [keyCode, actionId] of actions) {
       const whens = actionDefs.get(actionId);
       if (!whens) continue;
@@ -238,7 +361,7 @@ export function buildKeystrokeMap(
 
   // Emit direct keystrokes
   for (const [char, info] of directMap) {
-    const mod = MODIFIER_MAP[info.modifierIndex]!;
+    const mod = modifiers.get(info.modifierIndex)!;
     map.set(char, {
       label: formatKeystroke(mod.label, labelFor(info.keyCode)),
       modifiers: mod.label || "none",
@@ -276,7 +399,7 @@ export function buildKeystrokeMap(
   >();
   for (const [, dkt] of deadKeyTriggers) {
     for (const trigger of dkt.triggers) {
-      const mod = MODIFIER_MAP[trigger.modifierIndex];
+      const mod = modifiers.get(trigger.modifierIndex);
       if (!mod) continue;
       const existing = stateToTrigger.get(dkt.state);
       if (existing && existing.priority <= mod.priority) continue;
@@ -290,7 +413,7 @@ export function buildKeystrokeMap(
 
   // Emit dead key keystrokes
   for (const [modIndex, actions] of keyActions) {
-    if (MODIFIER_MAP[modIndex] === undefined) continue;
+    if (!modifiers.has(modIndex)) continue;
     for (const [keyCode, actionId] of actions) {
       const whens = actionDefs.get(actionId);
       if (!whens) continue;

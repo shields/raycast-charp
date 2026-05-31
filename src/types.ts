@@ -44,5 +44,4 @@ export interface KeystrokeDescription {
 export interface RecentEntry {
   cp: number;
   cps?: number[];
-  timestamp: number;
 }

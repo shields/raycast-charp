@@ -74,13 +74,29 @@ describe("generated characters.json", () => {
   });
 
   it("has reasonable total entry count", () => {
-    expect(characters.length).toBeGreaterThan(55000);
-    expect(characters.length).toBeLessThan(62000);
+    expect(characters.length).toBeGreaterThan(48000);
+    expect(characters.length).toBeLessThan(55000);
   });
 
   it("excludes CJK Unified Ideographs", () => {
     const cjk = characters.filter((e) => e.name.startsWith("<CJK Ideograph"));
     expect(cjk).toEqual([]);
+  });
+
+  it("excludes Tangut ideographs and components", () => {
+    const tangut = characters.filter(
+      (e) =>
+        e.name.startsWith("<Tangut Ideograph") ||
+        e.name.startsWith("TANGUT COMPONENT-"),
+    );
+    expect(tangut).toEqual([]);
+  });
+
+  it("keeps Hangul syllables (placeholder-named but useful)", () => {
+    const hangul = characters.filter((e) =>
+      e.name.startsWith("<Hangul Syllable"),
+    );
+    expect(hangul.length).toBeGreaterThan(10000);
   });
 
   it("does not include VS16-only pairs as sequence entries", () => {

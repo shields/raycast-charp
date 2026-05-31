@@ -1,8 +1,13 @@
 {
   "compilerOptions": {
     "target": "ESNext",
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
+    // The extension is bundled by esbuild via `ray build`, so model modules the
+    // way the bundler resolves them. Bundler resolution also permits
+    // `import.meta` (used in scripts/tests), which NodeNext rejects unless the
+    // package is `"type": "module"` — which in turn would require `with { type:
+    // "json" }` on the generated JSON imports.
+    "module": "Preserve",
+    "moduleResolution": "Bundler",
     "noEmit": true,
     "allowImportingTsExtensions": true,
     "strict": true,

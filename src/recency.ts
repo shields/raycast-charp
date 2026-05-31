@@ -17,7 +17,6 @@ export async function getRecentCharacters(): Promise<RecentEntry[]> {
 
 export async function recordCharacterUse(entry: CharacterEntry): Promise<void> {
   const entries = await getRecentCharacters();
-  const now = Date.now();
   const key = entryKey(entry);
 
   // Remove existing entry for this character, then prepend
@@ -25,7 +24,6 @@ export async function recordCharacterUse(entry: CharacterEntry): Promise<void> {
   filtered.unshift({
     cp: entry.cp,
     ...(entry.cps && { cps: entry.cps }),
-    timestamp: now,
   });
 
   // Trim to max size

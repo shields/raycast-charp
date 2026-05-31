@@ -49,6 +49,37 @@ describe("search", () => {
     const hasFlag = names.some((n) => n.startsWith("FLAG:"));
     expect(hasFlag).toBe(true);
   });
+
+  it("tokenizes hyphenated queries like spaced ones", () => {
+    const hyphen = searchCharacters(characters, "left-arrow").map(
+      (r) => r.name,
+    );
+    const spaced = searchCharacters(characters, "left arrow").map(
+      (r) => r.name,
+    );
+    expect(hyphen).toEqual(spaced);
+    expect(hyphen.length).toBeGreaterThan(0);
+  });
+
+  it("finds a character by its literal value, including non-ASCII", () => {
+    // Pasting a character to identify it must work (exact-character tier),
+    // including accented letters, symbols, Greek, and a bare hyphen (which is
+    // otherwise a token separator).
+    for (const q of ["é", "π", "→", "©", "-"]) {
+      const chars = searchCharacters(characters, q).map((r) =>
+        String.fromCodePoint(...(r.cps ?? [r.cp])),
+      );
+      expect(chars).toContain(q);
+    }
+  });
+
+  it("strips trailing punctuation from query terms like name words", () => {
+    // Typing the colon from the displayed name "FLAG: FRANCE" must tokenize the
+    // same as without it, so the two queries rank identically.
+    const withColon = searchCharacters(characters, "flag:").map((r) => r.name);
+    const without = searchCharacters(characters, "flag").map((r) => r.name);
+    expect(withColon).toEqual(without);
+  });
 });
 
 describe("scoreMatch with multi-codepoint entries", () => {
@@ -76,5 +107,11 @@ describe("scoreMatch with multi-codepoint entries", () => {
 
   it("returns 0 for no terms", () => {
     expect(scoreMatch(flagEntry, [])).toBe(0);
+  });
+
+  it("matches a name word despite trailing punctuation", () => {
+    // "FLAG: FRANCE" tokenizes to ["flag", "france"], so "flag" is an exact
+    // word match (tier 80), not merely a startsWith of "flag:" (tier 60).
+    expect(scoreMatch(flagEntry, ["flag"])).toBe(80);
   });
 });
