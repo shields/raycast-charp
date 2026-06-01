@@ -9,8 +9,9 @@ characters.
   emoji keywords, or hex code points. `right arrow`, `→`, and `2192` all find
   `→ RIGHTWARDS ARROW`.
 - **Smart ranking** — recently used characters first, then characters your
-  active keyboard layout can type, then a curated popularity order. The
-  characters you reach for surface to the top over time.
+  active keyboard layout can type, then a popularity order learned from
+  real-world web-text frequency. The characters you reach for surface to the top
+  over time.
 - **Keyboard layout awareness** — for characters reachable on your installed
   macOS layout, Charp shows the keystroke (e.g. `⌥E E` → `é`), including dead
   key sequences.
@@ -39,8 +40,9 @@ make dev          # generates data, then runs `ray develop` with live reload
 `make dev` registers the extension with Raycast and reloads on changes. To
 produce a standalone build instead, run `make build`.
 
-The first run downloads the Unicode data files (see [Data](#data-and-licensing))
-and generates `src/characters.json`; this takes a few seconds.
+The first run downloads the Unicode data files and a web-frequency table (see
+[Data](#data-and-licensing)) and generates `src/characters.json`; this takes a
+few seconds.
 
 ## Usage
 
@@ -62,10 +64,15 @@ The runtime is a single Raycast `view` command (`src/pick-character.tsx`) backed
 by a generated character database and a handful of focused modules.
 
 - **Data pipeline** (`scripts/generate-data.ts`) downloads the Unicode Character
-  Database and emoji data, parses it, computes a popularity score per character,
-  and writes `src/characters.json` (~51k entries; CJK and Tangut ideographs are
-  excluded because their placeholder names carry no search value). The JSON is
-  imported at runtime via the thin `src/characters.ts` re-export.
+  Database and emoji data, parses it, and scores each character's popularity
+  from real web-text frequency (the FineFreq corpus), falling back to
+  block/category heuristics for characters the corpus rarely sees. Compatibility
+  characters that Unicode normalization hides from FineFreq (™, ½, …) are ranked
+  from a non-normalized corpus (Leipzig) calibrated onto the same scale — see
+  [docs/architecture.md](docs/architecture.md). It writes `src/characters.json`
+  (~51k entries; CJK and Tangut ideographs are excluded because their
+  placeholder names carry no search value), imported at runtime via the thin
+  `src/characters.ts` re-export.
 - **Search** (`src/search.ts`) tokenizes the query and each name/keyword the
   same way, then scores matches with weakest-link semantics across six tiers
   (exact character → exact name word → name prefix → keyword prefix →
@@ -101,7 +108,8 @@ make lint         # eslint + prettier --check
 make fmt          # prettier --write
 make typecheck    # tsc --noEmit
 make check        # lint + typecheck + test
-make generate     # regenerate src/characters.json from the Unicode data files
+make generate     # regenerate src/characters.json from Unicode + FineFreq data
+make leipzig      # refresh src/leipzig-freq.json from the Leipzig corpora (~0.5GB)
 ```
 
 Run a single test file or pattern:
@@ -116,7 +124,11 @@ npx vitest run -t "maps dead key"
 network access. Regenerate them with `make generate` rather than editing them by
 hand; generation is deterministic, so it produces no diff unless the source data
 or the generator changes. The `data/` directory is a download cache for the raw
-Unicode files; delete it to force a re-download.
+Unicode and FineFreq files; delete it to force a re-download.
+
+`src/leipzig-freq.json` is also generated and committed, but by a separate step
+(`make leipzig`), because it requires a ~0.5GB corpus download. `make generate`
+consumes the committed result, so normal builds never touch the Leipzig corpora.
 
 The repository uses a Lefthook pre-commit hook that formats Markdown with
 Prettier and runs the test suite with coverage.
@@ -133,10 +145,12 @@ src/
   types.ts             shared types and code-point helpers
   characters.{ts,json} generated character database (committed)
   variants.{ts,json}   generated emoji-variant data (committed)
+  leipzig-freq.json    generated code-point counts for folded chars (committed)
 scripts/
-  generate-data.ts     download + parse UCD/emoji data → generated artifacts
+  generate-data.ts     download + parse UCD/emoji/FineFreq → generated artifacts
+  compute-leipzig-freq.ts  count Leipzig corpora → src/leipzig-freq.json
 test/                  vitest suite
-data/                  cached Unicode source files (git-ignored)
+data/                  cached Unicode + FineFreq + Leipzig files (git-ignored)
 ```
 
 ## Data and licensing
@@ -148,5 +162,18 @@ the [Unicode emoji data files](https://www.unicode.org/Public/17.0.0/emoji/)
 `src/variants.json`. That derived data is redistributed under the
 [Unicode License V3](https://www.unicode.org/license.txt); see
 [`NOTICE`](NOTICE) for the required copyright and permission notice.
+
+Character popularity is ranked using
+[FineFreq](https://huggingface.co/datasets/lgi2p/finefreq), per-code-point
+frequency counts over the FineWeb/FineWeb2 web corpora (built from Common
+Crawl), used under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+Only the resulting character ordering is embedded in `src/characters.json`; the
+dataset itself is not redistributed. See [`NOTICE`](NOTICE) for attribution.
+
+Compatibility characters that Unicode normalization removes from FineFreq are
+ranked from the [Leipzig Corpora Collection](https://wortschatz.uni-leipzig.de),
+also under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/); only the
+derived per-code-point counts are committed (`src/leipzig-freq.json`). See
+[`NOTICE`](NOTICE) for attribution.
 
 This extension's own code is licensed under the MIT License.

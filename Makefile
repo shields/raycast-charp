@@ -1,4 +1,4 @@
-.PHONY: build test lint fmt dev generate icon typecheck check
+.PHONY: build test lint fmt dev generate leipzig icon typecheck check
 
 build: generate
 	npm run build
@@ -23,6 +23,11 @@ dev:
 
 generate:
 	npx tsx scripts/generate-data.ts
+
+# Refresh src/leipzig-freq.json from the Leipzig corpora (~0.5GB download).
+# Run occasionally; `generate` consumes the committed result.
+leipzig:
+	npx tsx scripts/compute-leipzig-freq.ts
 
 icon:
 	npx tsx scripts/generate-icon.ts

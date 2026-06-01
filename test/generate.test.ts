@@ -158,3 +158,39 @@ describe("generated variants.json", () => {
     expect(keys.length).toBe(uniqueKeys.size);
   });
 });
+
+describe("folded-character ranking (Leipzig calibration)", () => {
+  const rankByCp = new Map<number, number>();
+  characters.forEach((e, i) => {
+    if (!e.cps) rankByCp.set(e.cp, i);
+  });
+  const rank = (cp: number): number => {
+    const r = rankByCp.get(cp);
+    expect(r, `U+${cp.toString(16)} present`).toBeDefined();
+    return r!;
+  };
+
+  it("orders the vulgar fractions by real frequency (½ > ¼ > ¾ > ⅓)", () => {
+    expect(rank(0x00bd)).toBeLessThan(rank(0x00bc)); // ½ before ¼
+    expect(rank(0x00bc)).toBeLessThan(rank(0x00be)); // ¼ before ¾
+    expect(rank(0x00be)).toBeLessThan(rank(0x2153)); // ¾ before ⅓
+  });
+
+  it("demotes ℃ below the vulgar fractions (rare in real text)", () => {
+    // ℃ is a CJK-compatibility character whose NFKC form (°C) is preferred;
+    // real-usage frequency ranks it below the fractions rather than boosting it.
+    expect(rank(0x2103)).toBeGreaterThan(rank(0x2153)); // ℃ below ⅓
+  });
+
+  it("ranks ™ and … above the vulgar fractions", () => {
+    // Relative to ½ (all FineFreq-absent, ranked by the frozen Leipzig counts),
+    // so this is robust to FineFreq drift unlike an absolute index cutoff.
+    expect(rank(0x2122)).toBeLessThan(rank(0x00bd)); // ™ before ½
+    expect(rank(0x2026)).toBeLessThan(rank(0x00bd)); // … before ½
+  });
+
+  it("flat-ranks styled forms below the common folded characters", () => {
+    // Mathematical alphanumerics share one flat rank below the data band.
+    expect(rank(0x1d400)).toBeGreaterThan(rank(0x00bd)); // 𝐀 below ½
+  });
+});

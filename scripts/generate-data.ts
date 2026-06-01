@@ -19,12 +19,22 @@ const UCD_BASE = `${PUBLIC_BASE}/ucd`;
 // the standalone /Public/emoji/<version>/ tree stops at 16.0.
 const EMOJI_BASE = `${PUBLIC_BASE}/emoji`;
 
+// Per-code-point occurrence counts from FineFreq (the FineWeb / FineWeb2
+// derivative of Common Crawl, ~96 trillion characters, 2013–2025). This is the
+// primary popularity signal — real web-text frequency in place of hand-tuned
+// tiers. English table only; CC-BY-4.0 (see NOTICE). The corpus is
+// NFKC-normalized, which folds many compatibility characters away; those are
+// ranked from the non-normalized Leipzig counts instead (see computeScore).
+const FINEFREQ_URL =
+  "https://huggingface.co/datasets/lgi2p/finefreq/resolve/main/DATA/eng_Latn/eng_Latn.csv";
+
 const SOURCES: Record<string, string> = {
   "UnicodeData.txt": `${UCD_BASE}/UnicodeData.txt`,
   "NameAliases.txt": `${UCD_BASE}/NameAliases.txt`,
   "Blocks.txt": `${UCD_BASE}/Blocks.txt`,
   "emoji-test.txt": `${EMOJI_BASE}/emoji-test.txt`,
   "emoji-variation-sequences.txt": `${UCD_BASE}/emoji/emoji-variation-sequences.txt`,
+  "finefreq-eng.csv": FINEFREQ_URL,
 };
 
 // CJK Unified and Tangut ideographs are allocated as First/Last ranges with
@@ -58,7 +68,14 @@ interface RawChar {
   name: string;
   cat: string;
   oldName: string;
+  /** A "styled" compatibility character — mathematical alphanumeric, circled,
+   * or full/half-width. NFKC folds these away so no corpus ranks them; they are
+   * given one flat rank instead of individual frequencies (see computeScore). */
+  flat: boolean;
 }
+
+// Decomposition tags whose characters are the flat-ranked styled forms above.
+const FLAT_DECOMP = /^<(font|circle|wide|narrow)>/;
 
 function parseUnicodeData(text: string): RawChar[] {
   const chars: RawChar[] = [];
@@ -71,10 +88,17 @@ function parseUnicodeData(text: string): RawChar[] {
     const name = fields[1]!;
     const cat = fields[2]!;
     const oldName = fields[10] ?? "";
+    const decomp = fields[5] ?? "";
 
     // Handle range start/end markers like "<CJK Ideograph, First>"
     if (name.endsWith(", First>")) {
-      rangeStart = { cp, name: name.replace(", First>", ">"), cat, oldName };
+      rangeStart = {
+        cp,
+        name: name.replace(", First>", ">"),
+        cat,
+        oldName,
+        flat: false,
+      };
       continue;
     }
     if (name.endsWith(", Last>")) {
@@ -91,6 +115,7 @@ function parseUnicodeData(text: string): RawChar[] {
               name: rangeStart.name,
               cat,
               oldName,
+              flat: false,
             });
           }
         }
@@ -102,7 +127,7 @@ function parseUnicodeData(text: string): RawChar[] {
     if (SKIP_CATEGORIES.has(cat)) continue;
     if (EXCLUDED_NAME.test(name)) continue;
 
-    chars.push({ cp, name, cat, oldName });
+    chars.push({ cp, name, cat, oldName, flat: FLAT_DECOMP.test(decomp) });
   }
   return chars;
 }
@@ -170,8 +195,78 @@ function getBlock(ranges: BlockRange[], cp: number): string | undefined {
   return undefined;
 }
 
-// Frequency scoring: higher = more popular
-// Based on general Unicode block importance and character type
+// Minimal RFC 4180 CSV reader: fields may be quoted, with embedded quotes
+// escaped by doubling. FineFreq's `character` column is itself a comma or a
+// quote for those rows, so a naïve split on commas would corrupt exactly the
+// punctuation we most want to rank — hence the state machine.
+function parseCsv(text: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let field = "";
+  let quoted = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i]!;
+    if (quoted) {
+      if (c === '"') {
+        if (text[i + 1] === '"') {
+          field += '"';
+          i++;
+        } else {
+          quoted = false;
+        }
+      } else {
+        field += c;
+      }
+    } else if (c === '"') {
+      quoted = true;
+    } else if (c === ",") {
+      row.push(field);
+      field = "";
+    } else if (c === "\n") {
+      row.push(field);
+      rows.push(row);
+      row = [];
+      field = "";
+    } else if (c !== "\r") {
+      field += c;
+    }
+  }
+  if (field !== "" || row.length > 0) {
+    row.push(field);
+    rows.push(row);
+  }
+  return rows;
+}
+
+// Map each single code point to its total occurrence count in FineFreq's English
+// table. Rows whose `character` spans more than one code point (rare NFKC
+// artifacts) are skipped — only atomic characters carry a frequency.
+function parseFineFreq(text: string): Map<number, number> {
+  // Strip a leading byte-order mark if the server sends one.
+  const clean = text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
+  const rows = parseCsv(clean);
+  const header = rows[0] ?? [];
+  const charIdx = header.indexOf("character");
+  const freqIdx = header.indexOf("total_frequency_all_time");
+  if (charIdx === -1 || freqIdx === -1) {
+    throw new Error("FineFreq CSV missing expected columns");
+  }
+  const freq = new Map<number, number>();
+  for (let r = 1; r < rows.length; r++) {
+    const row = rows[r]!;
+    const ch = row[charIdx];
+    const raw = row[freqIdx];
+    if (ch === undefined || raw === undefined || ch === "") continue;
+    if ([...ch].length !== 1) continue;
+    const count = Number.parseInt(raw, 10);
+    if (Number.isFinite(count)) freq.set(ch.codePointAt(0)!, count);
+  }
+  return freq;
+}
+
+// Fallback tiers, used only for characters FineFreq does not meaningfully
+// observe (see computeScore). Higher = more popular; based on general Unicode
+// block importance and character type.
 const BLOCK_TIER: Record<string, number> = {
   "Basic Latin": 100,
   "Latin-1 Supplement": 90,
@@ -222,63 +317,21 @@ const CATEGORY_TIER: Record<string, number> = {
   Cc: 1, // Control
 };
 
-// Well-known characters that deserve high ranking regardless of corpus data
-const BOOSTED_CHARS = new Map<number, number>([
-  // Common symbols people search for
-  [0x00a9, 200], // ©
-  [0x00ae, 200], // ®
-  [0x2122, 200], // ™
-  [0x00b0, 195], // °
-  [0x00b7, 190], // ·
-  [0x2022, 190], // •
-  [0x2026, 190], // …
-  [0x2013, 188], // –
-  [0x2014, 188], // —
-  [0x2018, 185], // '
-  [0x2019, 185], // '
-  [0x201c, 185], // "
-  [0x201d, 185], // "
-  [0x00d7, 180], // ×
-  [0x00f7, 180], // ÷
-  [0x2212, 178], // −
-  [0x2260, 175], // ≠
-  [0x2264, 175], // ≤
-  [0x2265, 175], // ≥
-  [0x221e, 175], // ∞
-  [0x03b1, 170], // α
-  [0x03b2, 170], // β
-  [0x03b3, 168], // γ
-  [0x03b4, 168], // δ
-  [0x03c0, 172], // π
-  [0x2190, 170], // ←
-  [0x2191, 170], // ↑
-  [0x2192, 170], // →
-  [0x2193, 170], // ↓
-  [0x20ac, 195], // €
-  [0x00a3, 195], // £
-  [0x00a5, 190], // ¥
-  [0x00a2, 185], // ¢
-  [0x2103, 180], // ℃
-  [0x00bd, 175], // ½
-  [0x00bc, 174], // ¼
-  [0x00be, 174], // ¾
-  [0x00b1, 178], // ±
-  [0x2248, 170], // ≈
-  [0x2261, 168], // ≡
-  [0x00ab, 165], // «
-  [0x00bb, 165], // »
-  [0x2605, 170], // ★
-  [0x2606, 168], // ☆
-  [0x2610, 165], // ☐
-  [0x2611, 165], // ☑
-  [0x2612, 165], // ☒
-  [0x2714, 172], // ✔
-  [0x2718, 170], // ✘
-  [0x00b6, 160], // ¶
-  [0x00a7, 162], // §
-  [0x2020, 160], // †
-  [0x2021, 158], // ‡
-]);
+// Non-NFKC per-code-point counts from the Leipzig corpora
+// (src/leipzig-freq.json, produced by `make leipzig`). Leipzig text is not
+// normalized, so it sees the compatibility characters FineFreq folds away;
+// calibrate() projects these counts onto FineFreq's scale. Returns an empty map
+// if the file is absent, in which case folded characters fall to the tail.
+function parseLeipzig(): Map<number, number> {
+  const path = join(SRC_DIR, "leipzig-freq.json");
+  const counts = new Map<number, number>();
+  if (!existsSync(path)) return counts;
+  const obj = JSON.parse(readFileSync(path, "utf-8")) as Record<string, number>;
+  for (const [hex, n] of Object.entries(obj)) {
+    counts.set(Number.parseInt(hex, 16), n);
+  }
+  return counts;
+}
 
 function parseEmojiVariationSequences(text: string): Set<number> {
   const cps = new Set<number>();
@@ -413,21 +466,89 @@ function parseEmojiTest(text: string): EmojiTestResult {
   return { emojiOrder, sequenceEntries, variantMap };
 }
 
+interface Calibration {
+  a: number;
+  b: number;
+}
+
+// Least-squares fit log10(FineFreq) = a*log10(Leipzig) + b over the characters
+// both corpora see (i.e. the non-folded ones), giving the line that projects a
+// folded character — visible only to Leipzig — onto FineFreq's frequency scale.
+// The floors drop noisy low-count anchors; in practice the fit is tight
+// (R^2 ~ 0.93, slope ~0.9). Returns null if there are too few anchors.
+function calibrate(
+  freq: Map<number, number>,
+  leipzig: Map<number, number>,
+): Calibration | null {
+  let n = 0,
+    sx = 0,
+    sy = 0,
+    sxx = 0,
+    sxy = 0;
+  for (const [cp, l] of leipzig) {
+    const f = freq.get(cp);
+    if (f === undefined || l < 20 || f < 1000) continue;
+    const x = Math.log10(l);
+    const y = Math.log10(f);
+    n++;
+    sx += x;
+    sy += y;
+    sxx += x * x;
+    sxy += x * y;
+  }
+  if (n < 50) return null;
+  const a = (n * sxy - sx * sy) / (n * sxx - sx * sx);
+  const b = (sy - a * sx) / n;
+  // Degenerate anchors (e.g. all the same count → zero denominator) give a
+  // non-finite fit; reject it so NaN never reaches a score and scatters the
+  // Leipzig-ranked characters through entries.sort().
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
+  return { a, b };
+}
+
+// Popularity score. The primary signal is real web-text frequency from FineFreq,
+// log-scaled into a band (DATA_BASE + log10 count) that sits above every
+// fallback, so any genuinely-used character outranks an unobserved one.
+// Characters NFKC folds out of FineFreq are ranked from the non-normalized
+// Leipzig counts, calibrated onto the same scale; the styled compatibility forms
+// (math-alphanumeric, circled, full/half-width), which no corpus ranks, share
+// one flat rank just below the data band. Everything else falls back to
+// Unicode's semantic emoji order, then to the block/category heuristic.
+const FREQ_FLOOR = 1_000_000; // FineFreq counts below this fall to the tail
+const DATA_BASE = 200; // data band: DATA_BASE + log10(count)
+// Styled forms (math-alphanumeric, circled, full/half-width) share one rank,
+// one point below the data-band floor (DATA_BASE + log10(FREQ_FLOOR)) so they
+// sit just under every frequency-ranked character regardless of those tunables.
+const FLAT_SCORE = DATA_BASE + Math.log10(FREQ_FLOOR) - 1;
+
 function computeScore(
   cp: number,
   cat: string,
   blockName: string | undefined,
+  flat: boolean,
+  freq: Map<number, number>,
+  leipzig: Map<number, number>,
+  calib: Calibration | null,
   emojiOrder: Map<number, number>,
 ): number {
-  // Check explicit boosts first
-  const boost = BOOSTED_CHARS.get(cp);
-  if (boost !== undefined) return boost;
+  const ffCount = freq.get(cp);
+  if (ffCount !== undefined) {
+    if (ffCount >= FREQ_FLOOR) return DATA_BASE + Math.log10(ffCount);
+  } else {
+    // Absent from FineFreq → NFKC-folded. Flat-rank the styled forms en masse;
+    // rank the rest from Leipzig, calibrated onto FineFreq's scale.
+    if (flat) return FLAT_SCORE;
+    const l = leipzig.get(cp);
+    if (l !== undefined && calib) {
+      return DATA_BASE + calib.a * Math.log10(l) + calib.b;
+    }
+  }
 
-  // Check emoji ordering
+  // Emoji keep Unicode's semantic order when their text frequency is too thin.
   const emojiRank = emojiOrder.get(cp);
   if (emojiRank !== undefined) return emojiRank;
 
-  // Score by block tier + category tier
+  // Heuristic tail for everything the corpus does not meaningfully observe.
   const blockScore = (blockName ? BLOCK_TIER[blockName] : undefined) ?? 10;
   const catScore = CATEGORY_TIER[cat] ?? 3;
   return blockScore + catScore;
@@ -458,12 +579,23 @@ async function main(): Promise<void> {
   const variationCps = parseEmojiVariationSequences(
     fileMap.get("emoji-variation-sequences.txt")!,
   );
+  const freq = parseFineFreq(fileMap.get("finefreq-eng.csv")!);
+  const leipzig = parseLeipzig();
+  const calib = calibrate(freq, leipzig);
 
   console.log(
     `  ${rawChars.length} characters parsed (CJK and Tangut excluded)`,
   );
   console.log(`  ${sequenceEntries.length} emoji sequences`);
   console.log(`  ${variantMap.size} base emoji with variants`);
+  console.log(`  ${freq.size} code points with FineFreq frequency data`);
+  if (calib) {
+    console.log(
+      `  ${leipzig.size} Leipzig counts; calibration log10F = ${calib.a.toFixed(3)}*log10L + ${calib.b.toFixed(3)}`,
+    );
+  } else {
+    console.log(`  no Leipzig calibration (src/leipzig-freq.json absent)`);
+  }
 
   // Build character entries with keywords and scores
   const entries: {
@@ -516,7 +648,16 @@ async function main(): Promise<void> {
       }
     }
 
-    const score = computeScore(raw.cp, raw.cat, blockName, emojiOrder);
+    const score = computeScore(
+      raw.cp,
+      raw.cat,
+      blockName,
+      raw.flat,
+      freq,
+      leipzig,
+      calib,
+      emojiOrder,
+    );
 
     entries.push({
       cp: raw.cp,
@@ -577,13 +718,22 @@ async function main(): Promise<void> {
   // Sort by score descending, then by code point ascending for stability
   entries.sort((a, b) => b.score - a.score || a.cp - b.cp);
 
-  console.log(`  Top 10 by popularity:`);
-  for (const e of entries.slice(0, 10)) {
-    const char = String.fromCodePoint(e.cp);
-    console.log(
-      `    U+${formatCodePoint(e.cp)} ${char}  ${e.name} (score: ${e.score})`,
-    );
-  }
+  const logRanked = (label: string, list: typeof entries): void => {
+    console.log(`  ${label}:`);
+    for (const e of list) {
+      const char = String.fromCodePoint(e.cp);
+      console.log(
+        `    U+${formatCodePoint(e.cp)} ${char}  ${e.name} (score: ${e.score.toFixed(2)})`,
+      );
+    }
+  };
+  logRanked("Top 10 by popularity", entries.slice(0, 10));
+  // ASCII is siphoned into the keyboard tier at runtime, so the interesting
+  // signal is the order of the special characters that remain.
+  logRanked(
+    "Top 25 non-ASCII",
+    entries.filter((e) => !e.cps && e.cp > 0x7f).slice(0, 25),
+  );
 
   // Generate characters JSON + thin TypeScript re-export
   console.log("Generating character data...");

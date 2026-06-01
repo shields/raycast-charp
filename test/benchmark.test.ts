@@ -118,12 +118,21 @@ describe("search benchmark", () => {
     expect(avg).toBeLessThan(10);
   });
 
-  it("runs the fuzzy fallback in <1500ms", () => {
-    // "letf arrow" matches nothing strictly, so this exercises both passes (the
-    // strict miss plus corpus-wide fuzzy edit-distance). Intentionally heavier
-    // than the hot path; this loose budget only catches a catastrophic blow-up.
-    const avg = benchmarkSearch("letf arrow", 3);
-    console.log(`Fuzzy fallback "letf arrow": ${avg.toFixed(2)}ms/call`);
-    expect(avg).toBeLessThan(1500);
-  });
+  // benchmarkSearch makes 6 calls (3 warm-up + 3 measured); at the 1500ms budget
+  // that is up to 9s of legitimate work, which would overrun Vitest's default
+  // 5000ms test timeout before the assertion runs, so give the case headroom.
+  const FUZZY_TIMEOUT_MS = 20_000;
+
+  it(
+    "runs the fuzzy fallback in <1500ms",
+    () => {
+      // "letf arrow" matches nothing strictly, so this exercises both passes (the
+      // strict miss plus corpus-wide fuzzy edit-distance). Intentionally heavier
+      // than the hot path; this loose budget only catches a catastrophic blow-up.
+      const avg = benchmarkSearch("letf arrow", 3);
+      console.log(`Fuzzy fallback "letf arrow": ${avg.toFixed(2)}ms/call`);
+      expect(avg).toBeLessThan(1500);
+    },
+    FUZZY_TIMEOUT_MS,
+  );
 });

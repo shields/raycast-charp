@@ -42,3 +42,39 @@ Except as contained in this notice, the name of a copyright holder shall
 not be used in advertising or otherwise to promote the sale, use or other
 dealings in these Data Files or Software without prior written
 authorization of the copyright holder.
+
+---
+
+Charp's character popularity ranking is derived from FineFreq, a table of
+per-code-point frequency counts computed over the FineWeb and FineWeb2 web
+corpora (themselves built from Common Crawl).
+
+    FineFreq — https://huggingface.co/datasets/lgi2p/finefreq
+    © Binbin Xu, licensed under Creative Commons Attribution 4.0 International
+    (CC BY 4.0) — https://creativecommons.org/licenses/by/4.0/
+
+    Binbin Xu. FineFreq: A Multilingual Character Frequency Dataset from
+    Web-Scale Text. arXiv:2512.09701 (2025).
+
+Charp uses the English-language frequency table to compute the order of the
+characters in src/characters.json. The dataset itself is not redistributed; only
+the derived ordering is embedded, and the dataset is not modified.
+
+---
+
+Charp's ranking of the compatibility characters that NFKC normalization removes
+from FineFreq (™, ½, …, and other folded forms) is derived from the Leipzig
+Corpora Collection (English news and web corpora), whose non-normalized text
+preserves them.
+
+    Leipzig Corpora Collection — https://wortschatz.uni-leipzig.de
+    © Universität Leipzig, licensed under Creative Commons Attribution 4.0
+    International (CC BY 4.0) — https://creativecommons.org/licenses/by/4.0/
+
+    D. Goldhahn, T. Eckart & U. Quasthoff. Building Large Monolingual
+    Dictionaries at the Leipzig Corpora Collection: From 100 to 200 Languages.
+    Proceedings of the 8th International Conference on Language Resources and
+    Evaluation (LREC 2012).
+
+Only per-code-point counts derived from these corpora are committed (as
+src/leipzig-freq.json); the corpora themselves are not redistributed.
