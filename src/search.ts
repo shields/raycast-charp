@@ -33,7 +33,7 @@ function words(s: string): string[] {
  * test `<= cap` cheaply without computing the exact distance. Counts a single
  * adjacent transposition as one edit, so "letf" is distance 1 from "left".
  */
-function boundedEditDistance(a: string, b: string, cap: number): number {
+export function boundedEditDistance(a: string, b: string, cap: number): number {
   const m = a.length;
   const n = b.length;
   if (Math.abs(m - n) > cap) return cap + 1;

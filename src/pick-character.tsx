@@ -39,7 +39,7 @@ function isControlCodePoint(cp: number): boolean {
 
 /** Render-tree-safe display for plain-text props. Non-BMP characters
  * crash Raycast's Swift JSON parser (raycast/extensions#17053). */
-function characterDisplay(entry: CharacterEntry): string {
+export function characterDisplay(entry: CharacterEntry): string {
   if (entry.cps) {
     // A sequence is safe to render literally only when every code point is in
     // the BMP; a single non-BMP code point would crash the parser.
@@ -98,9 +98,9 @@ export default function PickCharacter() {
       }
     }
 
-    recent.sort(
-      (a, b) => (boosts.get(entryKey(b)) ?? 0) - (boosts.get(entryKey(a)) ?? 0),
-    );
+    // Every entry in `recent` has a key in `boosts` (that is why it was pushed
+    // there), so the lookups are always present.
+    recent.sort((a, b) => boosts.get(entryKey(b))! - boosts.get(entryKey(a))!);
 
     return [...recent, ...withKey, ...rest];
   }, [recentEntries, keyboardCps]);
@@ -152,7 +152,7 @@ export default function PickCharacter() {
   );
 }
 
-function CharacterItem({
+export function CharacterItem({
   entry,
   keystroke,
   onSelect,

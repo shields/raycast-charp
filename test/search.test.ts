@@ -3,7 +3,11 @@
 
 import { describe, expect, it } from "vitest";
 import { characters } from "../src/characters.js";
-import { scoreMatch, searchCharacters } from "../src/search.js";
+import {
+  boundedEditDistance,
+  scoreMatch,
+  searchCharacters,
+} from "../src/search.js";
 import type { CharacterEntry } from "../src/types.js";
 
 describe("search", () => {
@@ -156,5 +160,40 @@ describe("scoreMatch with multi-codepoint entries", () => {
     // "FLAG: FRANCE" tokenizes to ["flag", "france"], so "flag" is an exact
     // word match (tier 80), not merely a startsWith of "flag:" (tier 60).
     expect(scoreMatch(flagEntry, ["flag"])).toBe(80);
+  });
+});
+
+describe("boundedEditDistance", () => {
+  it("returns the other length when one operand is empty", () => {
+    // The cap is high enough to reach the empty-operand fast paths rather than
+    // bailing out on the length-difference check.
+    expect(boundedEditDistance("", "abc", 5)).toBe(3);
+    expect(boundedEditDistance("abc", "", 5)).toBe(3);
+  });
+
+  it("returns 0 for identical strings", () => {
+    expect(boundedEditDistance("left", "left", 1)).toBe(0);
+  });
+
+  it("counts a single adjacent transposition as one edit", () => {
+    expect(boundedEditDistance("letf", "left", 1)).toBe(1);
+  });
+
+  it("returns cap + 1 once the distance is known to exceed the cap", () => {
+    expect(boundedEditDistance("abcd", "wxyz", 1)).toBe(2);
+  });
+});
+
+describe("searchCharacters name-coverage edge case", () => {
+  it("matches an entry whose name has no word tokens via its keywords", () => {
+    // "—" tokenizes to nothing, so the entry can only match by keyword and its
+    // name coverage is 0 (there are no name words to cover).
+    const entry: CharacterEntry = {
+      cp: 0x2014,
+      name: "—",
+      keywords: ["emdash"],
+      cat: "Pd",
+    };
+    expect(searchCharacters([entry], "emdash")).toEqual([entry]);
   });
 });

@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright © 2026 Michael Shields
 // SPDX-License-Identifier: MIT
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { svgCharacterImage } from "../src/svg.js";
 
 function decodeSvg(dataUri: string): string {
@@ -35,6 +35,20 @@ describe("svgCharacterImage", () => {
     const result = svgCharacterImage([0x1f4af]);
     for (const ch of result) {
       expect(ch.codePointAt(0)!).toBeLessThanOrEqual(0xffff);
+    }
+  });
+
+  it("caches the result so a repeat call skips re-encoding", () => {
+    const encode = vi.spyOn(Buffer, "from");
+    try {
+      const first = svgCharacterImage([0x1f3a8]);
+      const callsAfterBuild = encode.mock.calls.length;
+      const second = svgCharacterImage([0x1f3a8]);
+      // The cache hit returns the same string without re-encoding the SVG.
+      expect(encode).toHaveBeenCalledTimes(callsAfterBuild);
+      expect(second).toBe(first);
+    } finally {
+      encode.mockRestore();
     }
   });
 });
