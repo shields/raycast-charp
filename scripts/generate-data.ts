@@ -10,11 +10,14 @@ const PROJECT_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const DATA_DIR = join(PROJECT_ROOT, "data");
 const SRC_DIR = join(PROJECT_ROOT, "src");
 
+// When bumping the version, also update the numbers stated in NOTICE and
+// README.md — those are hand-written and not derived from this constant.
 const UNICODE_VERSION = "17.0.0";
-// Emoji 17.0 is only under "latest" as of 2026-04; use 16.0 for a stable URL
-const EMOJI_VERSION = "16.0";
-const UCD_BASE = `https://unicode.org/Public/${UNICODE_VERSION}/ucd`;
-const EMOJI_BASE = `https://unicode.org/Public/emoji/${EMOJI_VERSION}`;
+const PUBLIC_BASE = `https://unicode.org/Public/${UNICODE_VERSION}`;
+const UCD_BASE = `${PUBLIC_BASE}/ucd`;
+// Since Unicode 17.0, the emoji data files live under the version directory;
+// the standalone /Public/emoji/<version>/ tree stops at 16.0.
+const EMOJI_BASE = `${PUBLIC_BASE}/emoji`;
 
 const SOURCES: Record<string, string> = {
   "UnicodeData.txt": `${UCD_BASE}/UnicodeData.txt`,

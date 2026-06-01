@@ -1,5 +1,5 @@
 Charp bundles data derived from the Unicode Character Database (Unicode 17.0)
-and the Unicode emoji data files (Emoji 16.0), redistributed in processed form
+and the Unicode emoji data files (Emoji 17.0), redistributed in processed form
 as src/characters.json and src/variants.json. That data is provided under the
 following license.
 

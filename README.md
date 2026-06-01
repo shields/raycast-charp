@@ -143,8 +143,8 @@ data/                  cached Unicode source files (git-ignored)
 
 The character database is generated from the
 [Unicode Character Database](https://www.unicode.org/ucd/) (Unicode 17.0) and
-the [Unicode emoji data files](https://unicode.org/Public/emoji/) (Emoji 16.0),
-and the processed result is committed as `src/characters.json` and
+the [Unicode emoji data files](https://www.unicode.org/Public/17.0.0/emoji/)
+(Emoji 17.0), and the processed result is committed as `src/characters.json` and
 `src/variants.json`. That derived data is redistributed under the
 [Unicode License V3](https://www.unicode.org/license.txt); see
 [`NOTICE`](NOTICE) for the required copyright and permission notice.
