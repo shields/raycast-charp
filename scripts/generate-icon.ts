@@ -39,6 +39,7 @@ const TILE = SIZE / 2; // one grid cell, px
 const DENSITY = 72; // pin pt→px so glyph size is independent of the IM build
 const POINTSIZE = 160; // glyph size in px (== pt at DENSITY)
 const BASELINE_LIFT = 40; // gravity-South offset → a shared baseline per row
+const NUDGE = 44; // px each cell is pulled toward the icon centre
 
 const BG_INNER = "#2B3144"; // slate, lighter at the centre for subtle depth
 const BG_OUTER = "#171A24";
@@ -92,8 +93,12 @@ function inkCenterY(tile: string): number {
   return top + height / 2;
 }
 
+// Place a grid cell, pulling it toward the icon centre by NUDGE so the glyphs
+// cluster instead of sitting out at the tile centres. (Assumes a 2×2 grid.)
 function cellOffset(col: number, row: number): string {
-  return `+${col * TILE}+${row * TILE}`;
+  const x = col * TILE + (col === 0 ? NUDGE : -NUDGE);
+  const y = row * TILE + (row === 0 ? NUDGE : -NUDGE);
+  return `+${x}+${y}`;
 }
 
 function main(): void {
