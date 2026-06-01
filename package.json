@@ -1,7 +1,7 @@
 {
   "$schema": "https://www.raycast.com/schemas/extension.json",
   "name": "charp",
-  "title": "Character Picker",
+  "title": "Charp Character Picker",
   "description": "Unicode character picker with fuzzy search, popularity ranking, and keyboard layout awareness",
   "icon": "icon.png",
   "author": "michael_shields",
