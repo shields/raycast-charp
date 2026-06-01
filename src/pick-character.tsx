@@ -28,6 +28,33 @@ function formatCodePoint(cp: number): string {
   return `U+${cp.toString(16).toUpperCase().padStart(4, "0")}`;
 }
 
+/** Single code point → Unicode name, used to label the constituents of a
+ * multi-code-point sequence. Built once from the single-code-point entries;
+ * sequence entries are skipped so they never shadow a real character. */
+const nameByCodePoint = new Map<number, string>();
+for (const character of characters) {
+  if (!character.cps) nameByCodePoint.set(character.cp, character.name);
+}
+
+/** Markdown for the code point breakdown shown beneath the name. A lone code
+ * point renders inline; a sequence lists each code point and its name on its
+ * own line, so a combination like PIRATE FLAG shows its parts (waving black
+ * flag, ZWJ, skull and crossbones, …) rather than a run of hex. */
+function codePointDetail(cps: number[]): string {
+  if (cps.length === 1) {
+    return `\`${formatCodePoint(cps[0]!)}\``;
+  }
+  const labels = cps.map(formatCodePoint);
+  const width = Math.max(...labels.map((label) => label.length));
+  const body = cps
+    .map((cp, i) => {
+      const name = nameByCodePoint.get(cp);
+      return name ? `${labels[i]!.padEnd(width)}  ${name}` : labels[i]!;
+    })
+    .join("\n");
+  return ["```", body, "```"].join("\n");
+}
+
 /** Used for variant display in the detail panel markdown. */
 function formatHTMLEntity(cp: number): string {
   return `&#x${cp.toString(16).toUpperCase()};`;
@@ -178,7 +205,7 @@ export function CharacterItem({
     "",
     entry.name,
     "",
-    `\`${codePointStr}\``,
+    codePointDetail(cps),
   ];
   // Non-BMP characters use HTML entities to avoid the Raycast JSON crash,
   // but HTML entities don't form variation sequences with a following selector.

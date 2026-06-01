@@ -157,6 +157,11 @@ vi.mock("../src/characters.js", () => ({
       keywords: ["FR"],
       cat: "So",
     },
+    // Constituents of the KEYCAP: 1 sequence, so its breakdown can resolve
+    // each code point to a name (the France flag's are deliberately absent).
+    { cp: 0x31, name: "DIGIT ONE", keywords: [], cat: "Nd" },
+    { cp: 0xfe0f, name: "VARIATION SELECTOR-16", keywords: [], cat: "Mn" },
+    { cp: 0x20e3, name: "COMBINING ENCLOSING KEYCAP", keywords: [], cat: "Me" },
   ],
 }));
 
@@ -326,7 +331,7 @@ describe("CharacterItem detail panel", () => {
     expect(md).not.toContain("**Variants**");
   });
 
-  it("renders a multi-codepoint sequence with an SVG image", () => {
+  it("renders a multi-codepoint sequence with an SVG image and lists each code point with its name", () => {
     const md = itemMarkdown({
       cp: 0x31,
       cps: [0x31, 0xfe0f, 0x20e3],
@@ -336,6 +341,22 @@ describe("CharacterItem detail panel", () => {
     });
     expect(md).toContain("data:image/svg+xml;base64,");
     expect(md).toContain("KEYCAP: 1");
+    // Each constituent appears on its own line as "U+XXXX  NAME".
+    expect(md).toContain("U+0031  DIGIT ONE");
+    expect(md).toContain("U+FE0F  VARIATION SELECTOR-16");
+    expect(md).toContain("U+20E3  COMBINING ENCLOSING KEYCAP");
+  });
+
+  it("falls back to the bare code point when a sequence constituent has no name", () => {
+    const md = itemMarkdown({
+      cp: 0x1f1eb,
+      cps: [0x1f1eb, 0x1f1f7],
+      name: "FLAG: FRANCE",
+      keywords: ["FR"],
+      cat: "So",
+    });
+    expect(md).toContain("U+1F1EB");
+    expect(md).toContain("U+1F1F7");
   });
 });
 
@@ -402,8 +423,9 @@ describe("PickCharacter", () => {
       [...container.querySelectorAll('[data-testid="item"]')].map((el) =>
         el.getAttribute("data-title"),
       );
-    expect(titles()).toHaveLength(5);
-    // Most-recent character first, the flag (rest tier) last.
+    expect(titles()).toHaveLength(8);
+    // Most-recent character first (A, B), then keyboard-accessible 'a', then
+    // the rest tier in data order (C, then the France flag at index 4).
     expect(titles()[0]).toBe("A  LATIN CAPITAL LETTER A");
     expect(titles()[4]).toBe("U+1F1EB…  FLAG: FRANCE");
 
