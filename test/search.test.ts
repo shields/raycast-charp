@@ -83,6 +83,46 @@ describe("search", () => {
     const without = searchCharacters(characters, "flag").map((r) => r.name);
     expect(withColon).toEqual(without);
   });
+
+  it("ranks the canonical LEFTWARDS ARROW first for 'left arrow'", () => {
+    // "LEFTWARDS ARROW" (←) is fully covered by the query and far more popular,
+    // so it must beat the many "LEFT … ARROW" compounds where "left" is a whole
+    // word but the name is only partly covered; "LEFT RIGHT ARROW" (↔) is the
+    // next-best match and follows immediately.
+    const names = searchCharacters(characters, "left arrow").map((r) => r.name);
+    expect(names[0]).toBe("LEFTWARDS ARROW");
+    expect(names[1]).toBe("LEFT RIGHT ARROW");
+  });
+
+  it("tolerates a transposed typo ('letf' for 'left')", () => {
+    const names = searchCharacters(characters, "letf arrow").map((r) => r.name);
+    expect(names.length).toBeGreaterThan(0);
+    expect(names).toContain("LEFTWARDS ARROW");
+  });
+});
+
+describe("scoreMatch fuzzy tier", () => {
+  const arrow: CharacterEntry = {
+    cp: 0x2190,
+    name: "LEFTWARDS ARROW",
+    keywords: [],
+    cat: "Sm",
+  };
+
+  it("scores the fuzzy tier for a transposed typo of a name word stem", () => {
+    // "letf" is one transposition from "left", the stem of "LEFTWARDS".
+    expect(scoreMatch(arrow, ["letf"])).toBe(10);
+  });
+
+  it("keeps exact and prefix tiers above the fuzzy tier", () => {
+    expect(scoreMatch(arrow, ["arrow"])).toBe(80);
+    expect(scoreMatch(arrow, ["left"])).toBe(60);
+  });
+
+  it("does not fuzzy-match terms shorter than four characters", () => {
+    // "lft" is one insertion from "left" but too short to match fuzzily.
+    expect(scoreMatch(arrow, ["lft"])).toBe(0);
+  });
 });
 
 describe("scoreMatch with multi-codepoint entries", () => {

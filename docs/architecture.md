@@ -21,8 +21,15 @@ keyboard-accessible characters > static popularity order from the generated
 data.
 
 **Search scoring** (`scoreMatch` in `src/search.ts`): Weakest-link scoring
-across query terms with five tiers (100/80/60/40/20). Results are bucketed by
-score tier, preserving rank order within each bucket.
+across query terms — every term must match and an entry scores its weakest term.
+Tiers: 100 (character equals term), 80 (name word equals term), 60 (name word
+prefix), 40 (keyword prefix), 20 (substring/hex), and 10 (fuzzy: a name word
+within Damerau–Levenshtein 1 of the term or of a like-length prefix of it, for
+terms ≥ 4 chars — so "letf" finds "left"; fallback only). Results are ordered by
+tier bucket (the 80/60 name-word tiers share one bucket), then by name coverage
+(the fraction of the entry's name words the query accounts for — so "LEFTWARDS
+ARROW" outranks "LEFT RIGHT ARROW" for "left arrow"), then exact-over-prefix,
+then input rank (recency/keyboard/popularity).
 
 **Non-BMP character safety**: Raycast's Swift JSON parser crashes on non-BMP
 characters (U+10000+, i.e. emoji) in the render tree

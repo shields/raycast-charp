@@ -4,7 +4,9 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { characters } from "../src/characters.js";
 import { buildKeystrokeMap } from "../src/keyboard.js";
+import { searchCharacters } from "../src/search.js";
 import { FIXTURE_LAYOUT_PATH } from "./helpers.js";
 
 const JSON_PATH = join(import.meta.dirname, "..", "src", "characters.json");
@@ -89,5 +91,39 @@ describe("benchmark", () => {
     );
 
     expect(raw.length).toBeLessThan(20 * 1024 * 1024);
+  });
+});
+
+/** Average per-call time of a search query, after a short warm-up. */
+function benchmarkSearch(query: string, iterations: number): number {
+  for (let i = 0; i < 3; i++) searchCharacters(characters, query);
+  const start = performance.now();
+  for (let i = 0; i < iterations; i++) searchCharacters(characters, query);
+  return (performance.now() - start) / iterations;
+}
+
+describe("search benchmark", () => {
+  it("scores a strict multi-term query in <150ms", () => {
+    // The per-keystroke hot path: every one of ~51k entries is scored against
+    // the terms. A tight budget guards against regressions like edit-distance
+    // fuzzy matching running across the whole corpus for well-spelled queries.
+    const avg = benchmarkSearch("left arrow", 20);
+    console.log(`Strict search "left arrow": ${avg.toFixed(2)}ms/call`);
+    expect(avg).toBeLessThan(150);
+  });
+
+  it("returns the initial slice for an empty query in <10ms", () => {
+    const avg = benchmarkSearch("", 100);
+    console.log(`Empty query: ${avg.toFixed(2)}ms/call`);
+    expect(avg).toBeLessThan(10);
+  });
+
+  it("runs the fuzzy fallback in <1500ms", () => {
+    // "letf arrow" matches nothing strictly, so this exercises both passes (the
+    // strict miss plus corpus-wide fuzzy edit-distance). Intentionally heavier
+    // than the hot path; this loose budget only catches a catastrophic blow-up.
+    const avg = benchmarkSearch("letf arrow", 3);
+    console.log(`Fuzzy fallback "letf arrow": ${avg.toFixed(2)}ms/call`);
+    expect(avg).toBeLessThan(1500);
   });
 });

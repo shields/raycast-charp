@@ -67,10 +67,13 @@ by a generated character database and a handful of focused modules.
   excluded because their placeholder names carry no search value). The JSON is
   imported at runtime via the thin `src/characters.ts` re-export.
 - **Search** (`src/search.ts`) tokenizes the query and each name/keyword the
-  same way, then scores matches with weakest-link semantics across five tiers
+  same way, then scores matches with weakest-link semantics across six tiers
   (exact character → exact name word → name prefix → keyword prefix →
-  substring/hex). Results are bucketed by tier, preserving rank order within
-  each bucket.
+  substring/hex → fuzzy/typo). Results are ordered by tier bucket, then by how
+  completely the query covers each name (so `←` LEFTWARDS ARROW beats `↔` LEFT
+  RIGHT ARROW for "left arrow"), then by input rank. The fuzzy tier is a
+  fallback: it only runs when a query otherwise matches nothing (so "letf arrow"
+  still finds left arrows).
 - **Ranking** (`src/pick-character.tsx`) orders results in three tiers: recently
   used (with linear decay scoring from `src/recency.ts`, persisted via Raycast
   `LocalStorage`) > keyboard-accessible characters > the static popularity order
