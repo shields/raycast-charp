@@ -98,10 +98,65 @@ describe("search", () => {
     expect(names[1]).toBe("LEFT RIGHT ARROW");
   });
 
+  it("ranks the Latin letters first for 'letter a', lowercase before upper", () => {
+    // Regression: the single-letter term "a" inflated name coverage for every
+    // obscure "<script> LETTER A" (its first word starts with "a"), burying the
+    // common Latin letters past MAX_RESULTS. The exact-character signal now
+    // surfaces them, and lowercase outranks its uppercase pair.
+    const names = searchCharacters(characters, "letter a").map((r) => r.name);
+    expect(names[0]).toBe("LATIN SMALL LETTER A");
+    expect(names[1]).toBe("LATIN CAPITAL LETTER A");
+  });
+
   it("tolerates a transposed typo ('letf' for 'left')", () => {
     const names = searchCharacters(characters, "letf arrow").map((r) => r.name);
     expect(names.length).toBeGreaterThan(0);
     expect(names).toContain("LEFTWARDS ARROW");
+  });
+});
+
+describe("searchCharacters ordering signals", () => {
+  const latinA: CharacterEntry = {
+    cp: 0x61,
+    name: "LATIN SMALL LETTER A",
+    keywords: [],
+    cat: "Ll",
+  };
+  // An obscure same-tier letter whose 3-word name has *higher* coverage for
+  // these queries than the 4-word Latin name (fewer uncovered words), and which
+  // is never keyboard-typeable.
+  const avestanA: CharacterEntry = {
+    cp: 0x10b00,
+    name: "AVESTAN LETTER A",
+    keywords: [],
+    cat: "Lo",
+  };
+
+  it("ranks an exact-character term match above a higher-coverage name", () => {
+    // For "letter a" the term "a" *is* U+0061, so it must beat AVESTAN LETTER A
+    // even though every word of that name is covered (coverage 1 vs 0.5).
+    const names = searchCharacters([avestanA, latinA], "letter a").map(
+      (r) => r.name,
+    );
+    expect(names[0]).toBe("LATIN SMALL LETTER A");
+  });
+
+  it("ranks a keyboard-typeable character above a higher-coverage name", () => {
+    // "letter" matches both by exact word and neither by character, so coverage
+    // alone puts the shorter AVESTAN name first; marking the Latin letter
+    // typeable must override that.
+    const query = "letter";
+    const withoutKey = searchCharacters([avestanA, latinA], query).map(
+      (r) => r.name,
+    );
+    expect(withoutKey[0]).toBe("AVESTAN LETTER A");
+
+    const withKey = searchCharacters(
+      [avestanA, latinA],
+      query,
+      new Set([latinA.cp]),
+    ).map((r) => r.name);
+    expect(withKey[0]).toBe("LATIN SMALL LETTER A");
   });
 });
 

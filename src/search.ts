@@ -236,17 +236,26 @@ function scoreBucket(score: number): number {
 interface ScoredEntry {
   entry: CharacterEntry;
   bucket: number;
+  charHit: boolean;
+  keyHit: boolean;
   coverage: number;
   score: number;
   rank: number;
 }
 
+/** Empty default so callers without keyboard-layout info (tests, the strict
+ * scorer) pay nothing and `keyHit` is simply never set. */
+const NO_KEYBOARD: ReadonlySet<number> = new Set();
+
 /** Score every entry against the terms, keeping the matches. Tokenizes each
- * name once and reuses it for both scoring and coverage. */
+ * name once and reuses it for both scoring and coverage. `keyboardCps` is the
+ * set of code points typeable on the active layout, used for the `keyHit`
+ * ordering signal. */
 function collectMatches(
   ranked: CharacterEntry[],
   terms: string[],
   allowFuzzy: boolean,
+  keyboardCps: ReadonlySet<number>,
 ): ScoredEntry[] {
   const scored: ScoredEntry[] = [];
   let rank = 0;
@@ -254,9 +263,20 @@ function collectMatches(
     const nameWords = words(entry.name);
     const score = scoreEntry(entry, nameWords, terms, allowFuzzy);
     if (score > 0) {
+      const char = entry.cps
+        ? String.fromCodePoint(...entry.cps)
+        : String.fromCodePoint(entry.cp);
       scored.push({
         entry,
         bucket: scoreBucket(score),
+        // A term that *is* this character — the weakest-link score (a min across
+        // terms) hides the per-term tier-100 character match behind a weaker
+        // word term, so recover it here: typing "letter a" should surface the
+        // actual "a" above obscure "… LETTER A" names it merely ties on score.
+        charHit: terms.includes(char.toLowerCase()),
+        // Typeable on the active layout — a strong signal the character matters
+        // to this user. Sequences aren't single keystrokes, so never key-hit.
+        keyHit: !entry.cps && keyboardCps.has(entry.cp),
         coverage: nameCoverage(nameWords, terms),
         score,
         rank,
@@ -269,12 +289,17 @@ function collectMatches(
 
 /**
  * Search characters by query string. Returns up to MAX_RESULTS entries ordered
- * by score bucket, then by how completely the query covers each entry's name,
- * then exact-over-prefix, then by input rank (popularity / recency).
+ * by score bucket, then by exact-character and keyboard-typeable signals, then
+ * by how completely the query covers each entry's name, then exact-over-prefix,
+ * then by input rank (popularity / recency).
+ *
+ * `keyboardCps` is the set of code points typeable on the active layout; pass it
+ * so characters the user can type rank above obscure same-tier matches.
  */
 export function searchCharacters(
   ranked: CharacterEntry[],
   query: string,
+  keyboardCps: ReadonlySet<number> = NO_KEYBOARD,
 ): CharacterEntry[] {
   const trimmed = query.trim().toLowerCase();
   if (trimmed === "") {
@@ -295,17 +320,19 @@ export function searchCharacters(
   // than caching the strict pass's tokens: caching would pin a token array for
   // every one of ~51k entries on every keystroke purely to speed up this rare
   // no-match path, a poor trade against the hot path.
-  let scored = collectMatches(ranked, terms, false);
+  let scored = collectMatches(ranked, terms, false, keyboardCps);
   if (
     scored.length === 0 &&
     terms.some((term) => term.length >= FUZZY_MIN_TERM_LEN)
   ) {
-    scored = collectMatches(ranked, terms, true);
+    scored = collectMatches(ranked, terms, true, keyboardCps);
   }
 
   scored.sort(
     (a, b) =>
       a.bucket - b.bucket ||
+      Number(b.charHit) - Number(a.charHit) ||
+      Number(b.keyHit) - Number(a.keyHit) ||
       b.coverage - a.coverage ||
       b.score - a.score ||
       a.rank - b.rank,

@@ -26,10 +26,17 @@ Tiers: 100 (character equals term), 80 (name word equals term), 60 (name word
 prefix), 40 (keyword prefix), 20 (substring/hex), and 10 (fuzzy: a name word
 within Damerau–Levenshtein 1 of the term or of a like-length prefix of it, for
 terms ≥ 4 chars — so "letf" finds "left"; fallback only). Results are ordered by
-tier bucket (the 80/60 name-word tiers share one bucket), then by name coverage
-(the fraction of the entry's name words the query accounts for — so "LEFTWARDS
-ARROW" outranks "LEFT RIGHT ARROW" for "left arrow"), then exact-over-prefix,
-then input rank (recency/keyboard/popularity).
+tier bucket (the 80/60 name-word tiers share one bucket), then by two importance
+signals that outrank name shape: an exact-character match (a term that _is_ the
+character, recovering the per-term tier-100 signal the weakest-link score hides
+— so "letter a" surfaces the actual "a" instead of obscure "<script> LETTER A"
+names whose first word merely starts with "a") and keyboard-typeability (a code
+point typeable on the active layout, passed in from `pick-character.tsx`); then
+by name coverage (the fraction of the entry's name words the query accounts for
+— so "LEFTWARDS ARROW" outranks "LEFT RIGHT ARROW" for "left arrow"), then
+exact-over-prefix, then input rank (recency/keyboard/popularity). Popularity
+scoring ranks a lowercase letter just above its uppercase pair, so "a" precedes
+"A".
 
 **Non-BMP character safety**: Raycast's Swift JSON parser crashes on non-BMP
 characters (U+10000+, i.e. emoji) in the render tree

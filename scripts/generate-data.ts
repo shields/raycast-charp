@@ -201,24 +201,25 @@ const BLOCK_TIER: Record<string, number> = {
   "Spacing Modifier Letters": 55,
 };
 
+// Ordered by descending tier (higher = more popular).
 const CATEGORY_TIER: Record<string, number> = {
+  Ll: 11, // Lowercase letter — outranks its uppercase pair (more commonly typed)
   Lu: 10, // Uppercase letter
-  Ll: 10, // Lowercase letter
-  Lt: 8, // Titlecase letter
   Nd: 9, // Decimal digit
-  Sm: 7, // Math symbol
+  Lt: 8, // Titlecase letter
   Sc: 8, // Currency symbol
-  So: 5, // Other symbol
+  Sm: 7, // Math symbol
   Po: 6, // Other punctuation
   Ps: 6, // Open punctuation
   Pe: 6, // Close punctuation
   Pd: 6, // Dash punctuation
+  So: 5, // Other symbol
   No: 5, // Other number
   Sk: 4, // Modifier symbol
   Mn: 3, // Nonspacing mark
   Mc: 3, // Spacing mark
-  Cc: 1, // Control
   Cf: 2, // Format
+  Cc: 1, // Control
 };
 
 // Well-known characters that deserve high ranking regardless of corpus data

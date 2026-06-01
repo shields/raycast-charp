@@ -133,8 +133,8 @@ export default function PickCharacter() {
   }, [recentEntries, keyboardCps]);
 
   const visibleCharacters = useMemo(
-    () => searchCharacters(rankedCharacters, searchText),
-    [searchText, rankedCharacters],
+    () => searchCharacters(rankedCharacters, searchText, keyboardCps),
+    [searchText, rankedCharacters, keyboardCps],
   );
 
   const handleSelect = useCallback(
