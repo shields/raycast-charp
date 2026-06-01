@@ -358,6 +358,24 @@ describe("CharacterItem detail panel", () => {
     expect(md).toContain("U+1F1EB");
     expect(md).toContain("U+1F1F7");
   });
+
+  it("shows the general-category name with its abbreviation", () => {
+    const lower = itemMarkdown({
+      cp: 0x65,
+      name: "LATIN SMALL LETTER E",
+      keywords: ["Basic Latin"],
+      cat: "Ll",
+    });
+    expect(lower).toContain("Lowercase Letter (Ll)");
+
+    const control = itemMarkdown({
+      cp: 0x07,
+      name: "BELL",
+      keywords: [],
+      cat: "Cc",
+    });
+    expect(control).toContain("Control (Cc)");
+  });
 });
 
 describe("CharacterItem actions", () => {

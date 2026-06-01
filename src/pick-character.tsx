@@ -11,6 +11,7 @@ import {
 } from "@raycast/api";
 import { usePromise } from "@raycast/utils";
 import { useCallback, useMemo, useState } from "react";
+import { categoryLabel } from "./categories.js";
 import { characters } from "./characters.js";
 import { loadKeystrokeMap } from "./keyboard.js";
 import {
@@ -206,6 +207,8 @@ export function CharacterItem({
     entry.name,
     "",
     codePointDetail(cps),
+    "",
+    categoryLabel(entry.cat),
   ];
   // Non-BMP characters use HTML entities to avoid the Raycast JSON crash,
   // but HTML entities don't form variation sequences with a following selector.
