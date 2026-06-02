@@ -1,4 +1,4 @@
-.PHONY: build test lint fmt dev generate leipzig icon typecheck check
+.PHONY: build test coverage lint fmt dev generate leipzig icon typecheck check
 
 build: generate
 	npm run build
@@ -6,10 +6,13 @@ build: generate
 test: generate
 	npx vitest run
 
+coverage: generate
+	npx vitest run --coverage
+
 typecheck: generate
 	npx tsc -p tsconfig.json --noEmit
 
-check: generate lint typecheck test
+check: generate lint typecheck coverage
 
 lint:
 	npx ray lint

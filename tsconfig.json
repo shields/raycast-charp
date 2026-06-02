@@ -15,6 +15,9 @@
     "exactOptionalPropertyTypes": true,
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,
+    // Scripts and tests run through tsx and the extension is esbuild-bundled —
+    // both strip types, so keep every .ts free of non-erasable syntax.
+    "erasableSyntaxOnly": true,
     "resolveJsonModule": true,
     "types": ["node"],
     "skipLibCheck": true,
