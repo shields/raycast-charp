@@ -57,6 +57,26 @@ describe("search", () => {
     expect(hasFlag).toBe(true);
   });
 
+  it("accepts the conventional U+ code point notation like bare hex", () => {
+    // "U+0070" is how a code point is normally written; the "U+"/"u+" prefix
+    // must match the same characters as the bare "0070" (LATIN SMALL LETTER P),
+    // case-insensitively.
+    const bare = searchCharacters(characters, "0070").map((r) => r.name);
+    expect(bare).toContain("LATIN SMALL LETTER P");
+    for (const q of ["u+0070", "U+0070"]) {
+      const names = searchCharacters(characters, q).map((r) => r.name);
+      expect(names).toEqual(bare);
+    }
+  });
+
+  it("accepts U+ notation for any codepoint of a multi-codepoint entry", () => {
+    // France flag: U+1F1EB U+1F1F7 — the prefix must work on the second code
+    // point too, the same as the bare hex.
+    const results = searchCharacters(characters, "u+1f1f7");
+    const hasFlag = results.some((r) => r.name.startsWith("FLAG:"));
+    expect(hasFlag).toBe(true);
+  });
+
   it("tokenizes hyphenated queries like spaced ones", () => {
     const hyphen = searchCharacters(characters, "left-arrow").map(
       (r) => r.name,

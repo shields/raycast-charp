@@ -194,8 +194,16 @@ function scoreEntry(
       termScore = 20;
     }
 
-    // Hex code point match (any code point in sequence)
-    if (termScore < 20 && hexValues.some((h) => h.includes(term))) {
+    // Hex code point match (any code point in sequence). A leading "U+" — the
+    // conventional Unicode notation, e.g. "U+0070" — is stripped so it matches
+    // the bare hex the same way "0070" does; the remainder must be non-empty so
+    // a lone "u+" can't substring-match every entry.
+    const hexTerm = term.startsWith("u+") ? term.slice(2) : term;
+    if (
+      termScore < 20 &&
+      hexTerm !== "" &&
+      hexValues.some((h) => h.includes(hexTerm))
+    ) {
       termScore = 20;
     }
 
