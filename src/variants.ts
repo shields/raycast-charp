@@ -2,7 +2,6 @@
 // Run "npm run generate" to regenerate
 
 import type { EmojiVariant } from "./types.js";
-// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
 import data from "./variants.json";
 
 export const variants: Record<string, EmojiVariant[]> = data as Record<

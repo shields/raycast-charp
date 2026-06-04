@@ -2,7 +2,6 @@
 // Run "npm run generate" to regenerate
 
 import type { CharacterEntry } from "./types.js";
-// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
 import data from "./characters.json";
 
 export const characters: CharacterEntry[] = data as CharacterEntry[];
