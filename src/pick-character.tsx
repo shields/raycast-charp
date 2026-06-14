@@ -198,8 +198,7 @@ export function CharacterItem({
     ? [{ tag: keystroke.label, tooltip: `Type: ${keystroke.label}` }]
     : [];
 
-  const isControl =
-    !entry.cps && (entry.cp < 0x20 || (entry.cp >= 0x7f && entry.cp < 0xa0));
+  const isControl = !entry.cps && isControlCodePoint(entry.cp);
   const imageCps = entry.vs ? [...cps, 0xfe0f] : cps;
   const lines = [
     isControl ? `# [${codePointStr}]` : svgCharacterImage(imageCps),
