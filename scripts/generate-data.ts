@@ -103,8 +103,9 @@ function parseUnicodeData(text: string): RawChar[] {
     }
     if (name.endsWith(", Last>")) {
       if (rangeStart) {
-        // Expand the range into individual characters, skipping CJK Unified
-        // Ideographs (too numerous to be useful) and skip categories.
+        // Expand the range into individual characters, skipping the CJK and
+        // Tangut ideograph ranges (too numerous to be useful) and skip
+        // categories.
         if (
           !SKIP_CATEGORIES.has(cat) &&
           !EXCLUDED_RANGE_NAME.test(rangeStart.name)
