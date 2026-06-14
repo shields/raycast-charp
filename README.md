@@ -141,6 +141,7 @@ src/
   search.ts            query tokenization and match scoring
   keyboard.ts          parse the active .keylayout into keystroke labels
   recency.ts           recently-used tracking and recency boosts
+  categories.ts        Unicode general-category labels for the detail panel
   svg.ts               SVG/data-URI rendering for non-BMP characters
   types.ts             shared types and code-point helpers
   characters.{ts,json} generated character database (committed)
