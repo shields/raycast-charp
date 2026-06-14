@@ -29,7 +29,7 @@ describe("entryCodePoints", () => {
 });
 
 describe("entryKey", () => {
-  it("returns String(cp) for single-codepoint entry", () => {
+  it("returns the zero-padded hex code point for a single-codepoint entry", () => {
     const entry: CharacterEntry = {
       cp: 0x41,
       name: "LATIN CAPITAL LETTER A",
