@@ -118,6 +118,8 @@ describe("buildKeystrokeMap", () => {
     const space = map.get(" ");
     expect(space).toBeDefined();
     expect(space!.modifiers).toBe("none");
+    // The spacebar keycap must read "Space", not a blank space character.
+    expect(space!.label).toBe("Space");
   });
 
   it("does not map control characters", () => {

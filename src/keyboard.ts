@@ -214,7 +214,10 @@ function deriveKeyLabels(
     }
   }
 
-  if (!labels.has(49)) labels.set(49, "Space");
+  // Key code 49 is the spacebar; its output is the space character, which makes
+  // a blank, unreadable keycap. Always label it "Space" (overriding any label
+  // the loops above derived from that space output).
+  labels.set(49, "Space");
   return labels;
 }
 
