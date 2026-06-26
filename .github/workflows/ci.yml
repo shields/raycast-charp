@@ -32,7 +32,7 @@ jobs:
       # first run and reuses them afterward. Cache that directory so CI does not
       # refetch ~12 MB from unicode.org and Hugging Face every run; the script
       # hash keys the cache, so bumping the Unicode version busts it.
-      - uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: data
           key: charp-data-${{ hashFiles('scripts/generate-data.ts') }}
@@ -54,7 +54,7 @@ jobs:
           cache: npm
       - run: npm ci
       # Same key as the test job: restore the shared Unicode/FineFreq data cache.
-      - uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: data
           key: charp-data-${{ hashFiles('scripts/generate-data.ts') }}
