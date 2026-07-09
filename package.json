@@ -31,14 +31,14 @@
     "@testing-library/react": "16.3.2",
     "@types/node": "24.13.2",
     "@types/react-dom": "19.2.3",
-    "@vitest/coverage-v8": "4.1.9",
+    "@vitest/coverage-v8": "4.1.10",
     "eslint": "10.6.0",
     "happy-dom": "20.10.6",
     "prettier": "3.8.5",
     "react-dom": "19.2.7",
     "tsx": "4.23.0",
     "typescript": "6.0.3",
-    "vitest": "4.1.9"
+    "vitest": "4.1.10"
   },
   "scripts": {
     "prebuild": "npm run generate",
