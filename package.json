@@ -32,7 +32,7 @@
     "@types/node": "24.13.3",
     "@types/react-dom": "19.2.5",
     "@vitest/coverage-v8": "4.1.11",
-    "eslint": "10.9.0",
+    "eslint": "10.9.1",
     "happy-dom": "20.11.6",
     "prettier": "3.8.5",
     "react-dom": "19.2.8",
