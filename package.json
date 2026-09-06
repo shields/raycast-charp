@@ -37,7 +37,7 @@
     "prettier": "3.8.5",
     "react-dom": "19.2.8",
     "tsx": "4.23.13",
-    "typescript": "6.0.3",
+    "typescript": "7.0.2",
     "vitest": "5.0.0"
   },
   "scripts": {
