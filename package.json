@@ -34,7 +34,7 @@
     "@vitest/coverage-v8": "5.0.1",
     "eslint": "10.11.0",
     "happy-dom": "20.14.5",
-    "prettier": "3.8.5",
+    "prettier": "3.9.9",
     "react-dom": "19.3.0",
     "tsx": "4.23.15",
     "typescript": "6.0.3",
