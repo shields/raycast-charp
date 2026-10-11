@@ -2,7 +2,7 @@
 // SPDX-FileCopyrightText: Copyright © 2026 Michael Shields
 // SPDX-License-Identifier: MIT
 
-import { Clipboard, LocalStorage } from "@raycast/api";
+import { Clipboard, environment, LocalStorage } from "@raycast/api";
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
@@ -99,6 +99,7 @@ vi.mock("@raycast/api", () => {
     <div data-testid="actions">{children}</div>
   );
   return {
+    environment: { isDevelopment: false },
     List,
     Action,
     ActionPanel,
@@ -184,10 +185,12 @@ const keystrokeLoader = vi.mocked(loadKeystrokeMap);
 
 beforeEach(() => {
   vi.clearAllMocks();
+  environment.isDevelopment = false;
 });
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
 });
 
 describe("characterDisplay", () => {
@@ -494,6 +497,8 @@ describe("PickCharacter", () => {
   });
 
   it("updates results after typing, clearing, and entering a different query", async () => {
+    environment.isDevelopment = true;
+    vi.spyOn(console, "log").mockImplementation(() => {});
     getItem.mockResolvedValue(undefined);
     keystrokeLoader.mockResolvedValue(new Map());
     const { container, getByTestId } = render(<PickCharacter />);
