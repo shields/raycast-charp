@@ -15,6 +15,7 @@ import { usePromise } from "@raycast/utils";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { categoryLabel } from "./categories.js";
 import { characters } from "./characters.js";
+import { startDevelopmentInspector } from "./debug.js";
 import { loadKeystrokeMap } from "./keyboard.js";
 import {
   computeRecencyBoosts,
@@ -78,6 +79,7 @@ export function characterDisplay(entry: CharacterEntry): string {
 
 export default function PickCharacter() {
   const [searchText, setSearchText] = useState("");
+  useEffect(startDevelopmentInspector, []);
 
   const { data: recentEntries, revalidate: revalidateRecency } =
     usePromise(getRecentCharacters);

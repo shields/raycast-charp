@@ -34,6 +34,30 @@ function sockets(stdout: string, status = 0): ReturnType<typeof spawnSync> {
 }
 
 describe("Raycast process discovery", () => {
+  it("finds Raycast Backend among native helpers and unrelated Node processes", () => {
+    ps.mockReturnValue(`
+       1351 1 /Applications/Raycast.app/Contents/MacOS/Raycast
+       1392 1351 Raycast Backend
+       1490 1 /Applications/Raycast.app/Contents/XPCServices/Raycast Accessibility.xpc/Contents/MacOS/com.raycast.macos.Accessibility
+       1512 1 /Applications/Raycast.app/Contents/XPCServices/Raycast Pasteboard.xpc/Contents/MacOS/com.raycast.macos.Pasteboard
+       32499 32309 node
+       36906 1 /opt/homebrew/bin/node
+       38742 38597 node
+       60053 60030 node
+       60072 60053 /Volumes/Data/src/github.com/shields/raycast-charp/node_modules/@esbuild/darwin-arm64/bin/esbuild
+       61773 59750 npm exec tsx scripts/capture-raycast-stack.ts
+       61845 61773 node
+       61867 61845 /opt/homebrew/Cellar/node/26.11.1/bin/node
+    `);
+    expect(findProcess()).toBe(1392);
+  });
+
+  it("requires the named backend to belong to Raycast", () => {
+    ps.mockReturnValue("1392 1 Raycast Backend\n");
+    expect(() => findProcess()).toThrow("found 0");
+    expect(process.kill).not.toHaveBeenCalled();
+  });
+
   it("finds a bundled Node executable outside bin/node", () => {
     ps.mockReturnValue(`
        100 1 /Applications/Raycast.app/Contents/MacOS/Raycast
