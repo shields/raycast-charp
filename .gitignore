@@ -4,5 +4,6 @@ data/
 coverage/
 swift/.build/
 swift/.swiftpm/
+swift/Package.resolved
 .raycast-swift-build/
 compiled_raycast_swift/
