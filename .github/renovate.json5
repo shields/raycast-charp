@@ -2,6 +2,9 @@
   $schema: "https://docs.renovatebot.com/renovate-schema.json",
   extends: ["config:best-practices", ":semanticCommitsDisabled"],
   platformAutomerge: true,
+  lockFileMaintenance: {
+    automerge: true,
+  },
   packageRules: [
     {
       description: "Automerge non-major updates",
