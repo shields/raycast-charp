@@ -17,12 +17,12 @@ layout; candidate composition is outside the map's scope.
 The helper enumerates Shift, Option, Caps Lock, and their combinations, deriving
 key labels from the unmodified layout and respecting ANSI, ISO, and JIS keyboard
 geometry. It explores silent dead-key transitions in breadth-first order, so
-shorter sequences and simpler modifiers win. Paths that insert extra text or
-leave a dead key pending are excluded. Repeated states are visited once to bound
-cycles. A terminal output must be a single Unicode scalar to match a character
-database entry. The TypeScript bridge loads the resulting character-to-keystroke
-map, including sequences such as `⌥E E` → `é`. Native lookup errors propagate to
-Raycast's error UI.
+shorter sequences and simpler modifiers win. Paths that insert extra text are
+excluded. Repeated states are visited once to bound cycles. The emitted output
+must be a single Unicode scalar to match a character database entry. The
+TypeScript bridge loads the resulting character-to-keystroke map, including
+sequences such as `⌥E E` → `é`. Native lookup errors propagate to Raycast's
+error UI.
 
 **Ranking** (`src/pick-character.tsx`): Three-tier ordering: recently used (with
 linear decay scoring from `src/recency.ts` via Raycast LocalStorage) >

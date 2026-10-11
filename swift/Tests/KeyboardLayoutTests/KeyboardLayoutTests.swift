@@ -28,7 +28,7 @@ struct KeyboardLayoutTests {
         let bytes = try #require(CFDataGetBytePtr(data))
         let layout = UnsafeRawPointer(bytes).assumingMemoryBound(to: UCKeyboardLayout.self)
         var state: UInt32 = 0
-        for (modifiers, expected) in [(UInt32(optionKey), ""), (0, "é")] {
+        for (modifiers, expected) in [(UInt32(optionKey), ""), (0, "é"), (0, "e")] {
             var length = 0
             var buffer = [UniChar](repeating: 0, count: 255)
             let status = UCKeyTranslate(
@@ -37,7 +37,7 @@ struct KeyboardLayoutTests {
             )
             #expect(status == noErr)
             #expect(Array(buffer.prefix(length)) == Array(expected.utf16))
-            #expect((state == 0) == !expected.isEmpty)
+            if expected.isEmpty { #expect(state != 0) }
         }
     }
 
@@ -77,13 +77,14 @@ struct KeyboardLayoutTests {
             .deletingLastPathComponent().deletingLastPathComponent()
             .deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("test/fixtures/test.keylayout")
-        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let directory = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Keyboard Layouts")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        defer {
-            #expect(throws: Never.self) { try FileManager.default.removeItem(at: directory) }
-        }
         let name = "CharpTest" + UUID().uuidString.replacingOccurrences(of: "-", with: "")
         let file = directory.appendingPathComponent(name + ".keylayout")
+        defer {
+            #expect(throws: Never.self) { try FileManager.default.removeItem(at: file) }
+        }
         let xml = try String(contentsOf: fixture, encoding: .utf8)
             .replacingOccurrences(of: "name=\"Test\"", with: "name=\"\(name)\"")
             .replacingOccurrences(of: "<key code=\"2\" output=\"d\"/>", with: "<key code=\"2\" output=\"\"/>")
@@ -139,7 +140,7 @@ struct KeyboardLayoutTests {
     }
 
     @Test
-    func ignoresExtraOutputAndPendingState() throws {
+    func ignoresExtraOutput() throws {
         let stroke = Stroke(keyCode: 0, modifierMask: 0, modifiers: "", keyLabel: "A")
         for output in ["ab", "\r", "\u{0080}", "\u{F700}"] {
             let entries = try enumerateKeystrokes(strokes: [stroke]) { _, _ in
@@ -147,13 +148,18 @@ struct KeyboardLayoutTests {
             }
             #expect(entries.isEmpty)
         }
+        #expect(!characterIsVisible(""))
+        #expect(characterIsVisible("𝔸"))
+    }
+
+    @Test
+    func acceptsOutputWithOpaqueState() throws {
+        let stroke = Stroke(keyCode: 0, modifierMask: 0, modifiers: "", keyLabel: "A")
         let entries = try enumerateKeystrokes(strokes: [stroke]) { _, state in
             #expect(state == 0)
             return Translation(output: "a", state: 1)
         }
-        #expect(entries.isEmpty)
-        #expect(!characterIsVisible(""))
-        #expect(characterIsVisible("𝔸"))
+        #expect(entries.map(\.character) == ["a"])
     }
 
     @Test

@@ -56,7 +56,8 @@ func enumerateKeystrokes(
         index += 1
         for stroke in strokes {
             let translation = try translate(stroke, current.state)
-            if translation.state == 0 {
+            // The opaque state can stay nonzero after a completed character is emitted.
+            if !translation.output.isEmpty {
                 guard translation.output.unicodeScalars.count == 1,
                     let scalar = translation.output.unicodeScalars.first,
                     characterIsVisible(translation.output), result[scalar.value] == nil
@@ -73,7 +74,7 @@ func enumerateKeystrokes(
                             completion: stroke.label
                         )
                 )
-            } else if translation.output.isEmpty, visited.insert(translation.state).inserted {
+            } else if visited.insert(translation.state).inserted {
                 // Only silent transitions can prefix a character without inserting extra text.
                 guard states.count < 1024 else { throw LayoutError.tooManyDeadKeyStates }
                 states.append((translation.state, current.path + [stroke]))
