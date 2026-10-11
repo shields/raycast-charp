@@ -167,6 +167,7 @@ vi.mock("../src/characters.js", () => ({
     { cp: 0x31, name: "DIGIT ONE", keywords: [], cat: "Nd" },
     { cp: 0xfe0f, name: "VARIATION SELECTOR-16", keywords: [], cat: "Mn" },
     { cp: 0x20e3, name: "COMBINING ENCLOSING KEYCAP", keywords: [], cat: "Me" },
+    { cp: 0x2665, name: "BLACK HEART SUIT", keywords: [], cat: "So" },
   ],
 }));
 
@@ -471,7 +472,7 @@ describe("PickCharacter", () => {
       [...container.querySelectorAll('[data-testid="item"]')].map((el) =>
         el.getAttribute("data-title"),
       );
-    expect(titles()).toHaveLength(8);
+    expect(titles()).toHaveLength(9);
     // Most-recent character first (A, B), then keyboard-accessible 'a', then
     // the rest tier in data order (C, then the France flag at index 4).
     expect(titles()[0]).toBe("A  LATIN CAPITAL LETTER A");
@@ -490,5 +491,43 @@ describe("PickCharacter", () => {
       expect(shown).toHaveLength(1);
       expect(shown[0]).toBe("B  LATIN CAPITAL LETTER B");
     });
+  });
+
+  it("updates results after typing, clearing, and entering a different query", async () => {
+    getItem.mockResolvedValue(undefined);
+    keystrokeLoader.mockResolvedValue(new Map());
+    const { container, getByTestId } = render(<PickCharacter />);
+    await waitFor(() =>
+      expect(getByTestId("list").getAttribute("data-loading")).toBe("false"),
+    );
+
+    const titles = () =>
+      [...container.querySelectorAll('[data-testid="item"]')].map((item) =>
+        item.getAttribute("data-title"),
+      );
+    const enter = (values: string[]) => {
+      for (const value of values) {
+        fireEvent.change(getByTestId("search"), { target: { value } });
+      }
+    };
+
+    enter(["h", "he", "hea", "hear", "heart"]);
+    expect(titles()).toEqual(["♥  BLACK HEART SUIT"]);
+
+    enter(["hear", "hea", "he", "h", ""]);
+    expect(titles()).toHaveLength(9);
+
+    enter(["l", "le", "let", "lett", "lette", "letter"]);
+    expect(titles()).toEqual([
+      "A  LATIN CAPITAL LETTER A",
+      "B  LATIN CAPITAL LETTER B",
+      "a  LATIN SMALL LETTER A",
+      "C  LATIN CAPITAL LETTER C",
+    ]);
+
+    enter(["no-such-character"]);
+    expect(titles()).toEqual([]);
+    enter(["", "heart"]);
+    expect(titles()).toEqual(["♥  BLACK HEART SUIT"]);
   });
 });

@@ -146,7 +146,6 @@ export default function PickCharacter() {
       isLoading={!recentEntries || !keystrokeMap}
       filtering={false}
       onSearchTextChange={setSearchText}
-      throttle
       isShowingDetail
     >
       <List.EmptyView
