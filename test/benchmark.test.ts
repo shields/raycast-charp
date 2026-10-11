@@ -10,31 +10,36 @@ import { searchCharacters } from "../src/search.js";
 const JSON_PATH = join(import.meta.dirname, "..", "src", "characters.json");
 const VARIANT_PATH = join(import.meta.dirname, "..", "src", "variants.json");
 
+function cpuMillisecondsSince(start: NodeJS.CpuUsage): number {
+  const { user, system } = process.threadCpuUsage(start);
+  return (user + system) / 1000;
+}
+
 describe("benchmark", () => {
-  it("parses character JSON in <100ms", () => {
+  it("parses character JSON using <100ms CPU", () => {
     const raw = readFileSync(JSON_PATH, "utf-8");
 
-    const start = performance.now();
+    const start = process.threadCpuUsage();
     const data = JSON.parse(raw) as unknown[];
-    const elapsed = performance.now() - start;
+    const elapsed = cpuMillisecondsSince(start);
 
     console.log(
-      `JSON.parse: ${elapsed.toFixed(2)}ms (${String(data.length)} entries, ${(raw.length / 1024 / 1024).toFixed(1)}MB)`,
+      `JSON.parse: ${elapsed.toFixed(2)}ms CPU (${String(data.length)} entries, ${(raw.length / 1024 / 1024).toFixed(1)}MB)`,
     );
     expect(elapsed).toBeLessThan(100);
     expect(data.length).toBeGreaterThan(50_000);
   });
 
-  it("parses variants JSON in <50ms", () => {
+  it("parses variants JSON using <50ms CPU", () => {
     const raw = readFileSync(VARIANT_PATH, "utf-8");
 
-    const start = performance.now();
+    const start = process.threadCpuUsage();
     const data = JSON.parse(raw) as Record<string, unknown[]>;
-    const elapsed = performance.now() - start;
+    const elapsed = cpuMillisecondsSince(start);
 
     const groups = Object.keys(data).length;
     console.log(
-      `Variants JSON.parse: ${elapsed.toFixed(2)}ms (${String(groups)} groups, ${(raw.length / 1024).toFixed(0)}KB)`,
+      `Variants JSON.parse: ${elapsed.toFixed(2)}ms CPU (${String(groups)} groups, ${(raw.length / 1024).toFixed(0)}KB)`,
     );
     expect(elapsed).toBeLessThan(50);
     expect(groups).toBeGreaterThan(100);
@@ -56,24 +61,24 @@ describe("benchmark", () => {
 /** Average per-call time of a search query, after a short warm-up. */
 function benchmarkSearch(query: string, iterations: number): number {
   for (let i = 0; i < 3; i++) searchCharacters(characters, query);
-  const start = performance.now();
+  const start = process.threadCpuUsage();
   for (let i = 0; i < iterations; i++) searchCharacters(characters, query);
-  return (performance.now() - start) / iterations;
+  return cpuMillisecondsSince(start) / iterations;
 }
 
 describe("search benchmark", () => {
-  it("scores a strict multi-term query in <150ms", () => {
+  it("scores a strict multi-term query using <150ms CPU", () => {
     // The per-keystroke hot path: every one of ~51k entries is scored against
     // the terms. A tight budget guards against regressions like edit-distance
     // fuzzy matching running across the whole corpus for well-spelled queries.
     const avg = benchmarkSearch("left arrow", 20);
-    console.log(`Strict search "left arrow": ${avg.toFixed(2)}ms/call`);
+    console.log(`Strict search "left arrow": ${avg.toFixed(2)}ms CPU/call`);
     expect(avg).toBeLessThan(150);
   });
 
-  it("returns the initial slice for an empty query in <10ms", () => {
+  it("returns the initial slice for an empty query using <10ms CPU", () => {
     const avg = benchmarkSearch("", 100);
-    console.log(`Empty query: ${avg.toFixed(2)}ms/call`);
+    console.log(`Empty query: ${avg.toFixed(2)}ms CPU/call`);
     expect(avg).toBeLessThan(10);
   });
 
@@ -83,13 +88,13 @@ describe("search benchmark", () => {
   const FUZZY_TIMEOUT_MS = 20_000;
 
   it(
-    "runs the fuzzy fallback in <1500ms",
+    "runs the fuzzy fallback using <1500ms CPU",
     () => {
       // "letf arrow" matches nothing strictly, so this exercises both passes (the
       // strict miss plus corpus-wide fuzzy edit-distance). Intentionally heavier
       // than the hot path; this loose budget only catches a catastrophic blow-up.
       const avg = benchmarkSearch("letf arrow", 3);
-      console.log(`Fuzzy fallback "letf arrow": ${avg.toFixed(2)}ms/call`);
+      console.log(`Fuzzy fallback "letf arrow": ${avg.toFixed(2)}ms CPU/call`);
       expect(avg).toBeLessThan(1500);
     },
     FUZZY_TIMEOUT_MS,
