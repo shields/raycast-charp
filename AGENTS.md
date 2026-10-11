@@ -37,10 +37,12 @@ npx vitest run -t "maps dead key"
 ## Architecture
 
 See [docs/architecture.md](docs/architecture.md) for the data pipeline, keyboard
-layout parsing, ranking, search scoring, and the non-BMP rendering workaround.
+layout parsing, ranking, search scoring, and Unicode rendering.
 
 ## Conventions
 
+- Documentation describes the current system. Keep critical debugging findings
+  and change rationale in commit messages, not investigation logs in the docs.
 - TypeScript with strict mode and `noUncheckedIndexedAccess`
 - ESNext target, Bundler module resolution (the extension is esbuild-bundled by
   `ray build`; Bundler also permits `import.meta`, which NodeNext rejects unless

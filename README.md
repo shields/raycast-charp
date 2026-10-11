@@ -23,7 +23,7 @@ characters.
 
 ## Requirements
 
-- macOS with [Raycast](https://raycast.com) installed
+- macOS with [Raycast](https://raycast.com) v2 installed
 - [Node.js](https://nodejs.org) 22+ and npm (for building from source)
 
 ## Installation
@@ -89,11 +89,10 @@ by a generated character database and a handful of focused modules.
   XML file and builds a map from characters to keystroke labels, handling
   modifier layers and dead key state machines so the labels match your actual
   keyboard.
-- **Non-BMP rendering** (`src/svg.ts`) sidesteps a Raycast bug where the Swift
-  JSON parser crashes on characters above U+FFFF (emoji): the detail header
-  renders each character as an SVG `<text>` element using XML character
-  references, base64-encoded into a pure-ASCII data URI. Plain-text props fall
-  back to `U+XXXX` labels for non-BMP characters.
+- **Unicode rendering** displays characters and emoji sequences directly in list
+  titles and inline previews. The detail header uses `src/svg.ts` for a large
+  SVG preview, with XML character references to escape characters such as `<`
+  and `&`. Control characters use readable code-point labels.
 
 For a deeper tour of the architecture, see
 [docs/architecture.md](docs/architecture.md).
@@ -142,7 +141,7 @@ src/
   keyboard.ts          parse the active .keylayout into keystroke labels
   recency.ts           recently-used tracking and recency boosts
   categories.ts        Unicode general-category labels for the detail panel
-  svg.ts               SVG/data-URI rendering for non-BMP characters
+  svg.ts               Large SVG/data-URI character previews
   types.ts             shared types and code-point helpers
   characters.{ts,json} generated character database (committed)
   variants.{ts,json}   generated emoji-variant data (committed)

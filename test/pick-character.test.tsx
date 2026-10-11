@@ -2,7 +2,7 @@
 // SPDX-FileCopyrightText: Copyright © 2026 Michael Shields
 // SPDX-License-Identifier: MIT
 
-import { Clipboard, LocalStorage, showHUD } from "@raycast/api";
+import { Clipboard, LocalStorage } from "@raycast/api";
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
@@ -103,6 +103,11 @@ vi.mock("@raycast/api", () => {
     Action,
     ActionPanel,
     Icon: { Clipboard: "clipboard", CopyClipboard: "copy" },
+    Keyboard: {
+      Shortcut: {
+        Common: { Copy: { modifiers: ["cmd", "shift"], key: "c" } },
+      },
+    },
     Clipboard: { paste: vi.fn(), copy: vi.fn() },
     showHUD: vi.fn(),
     LocalStorage: { getItem: vi.fn(), setItem: vi.fn() },
@@ -174,8 +179,6 @@ vi.mock("../src/variants.js", () => ({
 
 const getItem = vi.mocked(LocalStorage.getItem);
 const paste = vi.mocked(Clipboard.paste);
-const copy = vi.mocked(Clipboard.copy);
-const hud = vi.mocked(showHUD);
 const keystrokeLoader = vi.mocked(loadKeystrokeMap);
 
 beforeEach(() => {
@@ -195,8 +198,11 @@ describe("characterDisplay", () => {
     expect(characterDisplay(make({ cp: 0x41 }))).toBe("A");
   });
 
-  it("renders a non-BMP character as its code point", () => {
-    expect(characterDisplay(make({ cp: 0x1f4af }))).toBe("U+1F4AF");
+  it.each([
+    { cp: 0x1f4af, expected: "💯" },
+    { cp: 0x1d400, expected: "𝐀" },
+  ])("renders non-BMP character $expected literally", ({ cp, expected }) => {
+    expect(characterDisplay(make({ cp }))).toBe(expected);
   });
 
   it("brackets a C0 control character", () => {
@@ -217,10 +223,10 @@ describe("characterDisplay", () => {
     ).toBe(String.fromCodePoint(0x31, 0xfe0f, 0x20e3));
   });
 
-  it("abbreviates a sequence containing a non-BMP code point", () => {
+  it("renders a sequence containing non-BMP code points literally", () => {
     expect(
       characterDisplay(make({ cp: 0x1f1eb, cps: [0x1f1eb, 0x1f1f7] })),
-    ).toBe("U+1F1EB…");
+    ).toBe("🇫🇷");
   });
 
   it("abbreviates a sequence containing a control code point", () => {
@@ -294,11 +300,11 @@ describe("CharacterItem detail panel", () => {
       cat: "So",
       vs: true,
     });
-    expect(md).toContain("Text:");
-    expect(md).toContain("Emoji:");
+    expect(md).toContain("Text: \u2764\uFE0E");
+    expect(md).toContain("Emoji: \u2764\uFE0F");
   });
 
-  it("omits the comparison for a non-BMP emoji-variation character", () => {
+  it("adds a variation-selector comparison for a non-BMP emoji-variation character", () => {
     const md = itemMarkdown({
       cp: 0x1f324,
       name: "WHITE SUN BEHIND CLOUD",
@@ -306,7 +312,8 @@ describe("CharacterItem detail panel", () => {
       cat: "So",
       vs: true,
     });
-    expect(md).not.toContain("Text:");
+    expect(md).toContain("Text: \u{1F324}\uFE0E");
+    expect(md).toContain("Emoji: \u{1F324}\uFE0F");
   });
 
   it("lists skin-tone variants when the group is present", () => {
@@ -317,8 +324,7 @@ describe("CharacterItem detail panel", () => {
       cat: "So",
     });
     expect(md).toContain("**Variants**");
-    expect(md).toContain("light skin tone");
-    expect(md).toContain("&#x1F44B;&#x1F3FB;");
+    expect(md).toContain("👋🏻 light skin tone");
   });
 
   it("omits the variants section when the group is empty", () => {
@@ -379,33 +385,57 @@ describe("CharacterItem detail panel", () => {
 });
 
 describe("CharacterItem actions", () => {
-  it("wires the paste, copy, and copy-code-point actions", async () => {
-    const entry: CharacterEntry = {
-      cp: 0x41,
-      name: "LATIN CAPITAL LETTER A",
-      keywords: [],
-      cat: "Lu",
-    };
-    const onSelect = vi.fn(() => Promise.resolve());
-    const { container } = render(
-      <CharacterItem entry={entry} keystroke={undefined} onSelect={onSelect} />,
-    );
+  it.each([
+    { cps: [0x41], text: "A", codePoints: "U+0041" },
+    { cps: [0x1f4af], text: "💯", codePoints: "U+1F4AF" },
+    {
+      cps: [0x1f3f4, 0x200d, 0x2620, 0xfe0f],
+      text: "🏴‍☠️",
+      codePoints: "U+1F3F4 U+200D U+2620 U+FE0F",
+    },
+    { cps: [0x1f44b, 0x1f3fb], text: "👋🏻", codePoints: "U+1F44B U+1F3FB" },
+  ])(
+    "passes the full character to the actions for $codePoints",
+    ({ cps, text, codePoints }) => {
+      const entry: CharacterEntry = {
+        cp: cps[0]!,
+        ...(cps.length > 1 && { cps }),
+        name: "TEST CHARACTER",
+        keywords: [],
+        cat: "So",
+      };
+      const onSelect = vi.fn(() => Promise.resolve());
+      const { container } = render(
+        <CharacterItem
+          entry={entry}
+          keystroke={undefined}
+          onSelect={onSelect}
+        />,
+      );
 
-    fireEvent.click(
-      container.querySelector('[data-action="Paste Character"]')!,
-    );
-    expect(onSelect).toHaveBeenCalledWith(entry);
+      fireEvent.click(
+        container.querySelector('[data-action="Paste Character"]')!,
+      );
+      expect(onSelect).toHaveBeenCalledWith(entry);
 
-    fireEvent.click(container.querySelector('[data-action="Copy Character"]')!);
-    await waitFor(() => expect(copy).toHaveBeenCalledWith("A"));
-    expect(hud).toHaveBeenCalledWith("Copied to Clipboard");
+      expect(
+        container
+          .querySelector('[data-action="Copy Character"]')
+          ?.getAttribute("data-content"),
+      ).toBe(text);
 
-    expect(
-      container
-        .querySelector('[data-action="Copy Code Point"]')
-        ?.getAttribute("data-content"),
-    ).toBe("U+0041");
-  });
+      expect(
+        container
+          .querySelector('[data-action="Copy Code Point"]')
+          ?.getAttribute("data-content"),
+      ).toBe(codePoints);
+      expect(
+        container
+          .querySelector('[data-testid="item"]')
+          ?.getAttribute("data-title"),
+      ).toBe(`${text}  TEST CHARACTER`);
+    },
+  );
 });
 
 describe("PickCharacter", () => {
@@ -445,7 +475,7 @@ describe("PickCharacter", () => {
     // Most-recent character first (A, B), then keyboard-accessible 'a', then
     // the rest tier in data order (C, then the France flag at index 4).
     expect(titles()[0]).toBe("A  LATIN CAPITAL LETTER A");
-    expect(titles()[4]).toBe("U+1F1EB…  FLAG: FRANCE");
+    expect(titles()[4]).toBe("🇫🇷  FLAG: FRANCE");
 
     fireEvent.click(
       container.querySelectorAll('[data-action="Paste Character"]')[0]!,

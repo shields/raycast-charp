@@ -62,25 +62,17 @@ by name coverage (the fraction of the entry's name words the query accounts for
 exact-over-prefix, then input rank (recency/keyboard/popularity, the last being
 the frequency order described under **Popularity scoring** above).
 
-**Non-BMP character safety**: Raycast's Swift JSON parser crashes on non-BMP
-characters (U+10000+, i.e. emoji) in the render tree
-([raycast/extensions#17053](https://github.com/raycast/extensions/issues/17053)).
-Both raw UTF-8 and `\uD83D\uDCAF` surrogate-pair escapes are rejected. Display
-functions handle this at different levels:
+**Unicode rendering**: Raycast v2 displays Unicode characters and emoji
+sequences directly in list titles and inline Markdown. `characterDisplay()`
+keeps readable labels for control characters. Text/emoji comparisons append
+U+FE0E or U+FE0F to the character, including characters above U+FFFF. Variant
+previews preserve the full sequence of code points.
 
-- `characterDisplay()` — for plain-text props (title, accessories). Returns
-  `U+XXXX` for non-BMP characters.
-- `svgCharacterImage()` (`src/svg.ts`) — for the detail panel header. Renders
-  characters as SVG `<text>` elements using XML character references, then
-  base64-encodes the SVG as a markdown data URI image. This bypasses the JSON
-  parser entirely (the data URI is pure ASCII) and goes through CoreGraphics
-  text shaping, which correctly applies variation selectors. A zero-width space
-  before the image tag forces inline layout (left-aligned).
-- Variation selector presentation (text U+FE0E vs emoji U+FE0F) uses inline text
-  for BMP characters. Non-BMP characters cannot show variation comparisons
-  because the markdown renderer does not combine HTML entities with following
-  variation selectors into a sequence.
+`svgCharacterImage()` (`src/svg.ts`) provides the detail panel's large preview:
+a 96-pixel glyph in a 150-by-150 SVG, independent of Markdown heading styles.
+Numeric XML references escape characters such as `<` and `&`. The SVG is
+base64-encoded into a Markdown data URI; a leading zero-width space gives it
+inline, left-aligned layout. Control characters use a text heading because XML
+forbids most control-character references.
 
-The "Copy Character" action uses a callback (`Clipboard.copy()` at runtime)
-instead of `Action.CopyToClipboard` to avoid placing the raw character in the
-render tree.
+The "Copy Character" action passes the full string to `Action.CopyToClipboard`.

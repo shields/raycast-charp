@@ -3,9 +3,8 @@
 
 const cache = new Map<string, string>();
 
-/** Markdown image tag rendering a character via SVG. The SVG uses XML
- * character references so no raw non-BMP bytes enter the render tree.
- * CoreGraphics text shaping applies variation selectors correctly. */
+// SVG sets the preview size independently of Markdown heading styles.
+// Numeric references keep XML-sensitive characters such as < and & literal.
 export function svgCharacterImage(codePoints: number[]): string {
   const key = codePoints.join(",");
   const cached = cache.get(key);

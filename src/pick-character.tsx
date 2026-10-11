@@ -6,6 +6,7 @@ import {
   ActionPanel,
   Clipboard,
   Icon,
+  Keyboard,
   List,
   showHUD,
 } from "@raycast/api";
@@ -56,22 +57,13 @@ function codePointDetail(cps: number[]): string {
   return ["```", body, "```"].join("\n");
 }
 
-/** Used for variant display in the detail panel markdown. */
-function formatHTMLEntity(cp: number): string {
-  return `&#x${cp.toString(16).toUpperCase()};`;
-}
-
 function isControlCodePoint(cp: number): boolean {
   return cp < 0x20 || (cp >= 0x7f && cp < 0xa0);
 }
 
-/** Render-tree-safe display for plain-text props. Non-BMP characters
- * crash Raycast's Swift JSON parser (raycast/extensions#17053). */
 export function characterDisplay(entry: CharacterEntry): string {
   if (entry.cps) {
-    // A sequence is safe to render literally only when every code point is in
-    // the BMP; a single non-BMP code point would crash the parser.
-    if (entry.cps.every((cp) => cp <= 0xffff && !isControlCodePoint(cp))) {
+    if (entry.cps.every((cp) => !isControlCodePoint(cp))) {
       return String.fromCodePoint(...entry.cps);
     }
     return `${formatCodePoint(entry.cps[0]!)}…`;
@@ -79,9 +71,6 @@ export function characterDisplay(entry: CharacterEntry): string {
   const cp = entry.cp;
   if (isControlCodePoint(cp)) {
     return `[${formatCodePoint(cp)}]`;
-  }
-  if (cp > 0xffff) {
-    return formatCodePoint(cp);
   }
   return String.fromCodePoint(cp);
 }
@@ -209,25 +198,16 @@ export function CharacterItem({
     "",
     categoryLabel(entry.cat),
   ];
-  // Non-BMP characters use HTML entities to avoid the Raycast JSON crash,
-  // but HTML entities don't form variation sequences with a following selector.
-  if (entry.vs && entry.cp <= 0xffff) {
+  if (entry.vs) {
     const ch = String.fromCodePoint(entry.cp);
     lines.push("", `Text: ${ch}\uFE0E \u00A0 Emoji: ${ch}\uFE0F`);
   }
 
-  // Show skin tone / modifier variants as HTML entities. Adjacent entities
-  // form complete emoji sequences (unlike variation selectors which don't
-  // combine with a preceding entity). Text renders inline correctly,
-  // whereas SVG images don't flow with the label text.
   const key = entryKey(entry);
   const entryVariants = variants[key];
   if (entryVariants && entryVariants.length > 0) {
     const variantText = entryVariants
-      .map((v) => {
-        const refs = v.cps.map(formatHTMLEntity).join("");
-        return `${refs} ${v.label}`;
-      })
+      .map((v) => `${String.fromCodePoint(...v.cps)} ${v.label}`)
       .join(" \u00A0 ");
     lines.push("", "**Variants**", "", variantText);
   }
@@ -254,19 +234,19 @@ export function CharacterItem({
             icon={Icon.Clipboard}
             onAction={() => void onSelect(entry)}
           />
-          <Action
+          <Action.CopyToClipboard
             title="Copy Character"
-            icon={Icon.CopyClipboard}
+            content={charString}
             shortcut={{ modifiers: ["cmd"], key: "c" }}
-            onAction={async () => {
-              await Clipboard.copy(charString);
-              await showHUD("Copied to Clipboard");
-            }}
           />
           <Action.CopyToClipboard
             title="Copy Code Point"
             content={codePoints.join(" ")}
-            shortcut={{ modifiers: ["cmd", "shift"], key: "c" }}
+            shortcut={
+              // Raycast's Common.Copy is Cmd+Shift+C, leaving Cmd+C for Copy Character.
+              // https://developers.raycast.com/api-reference/keyboard#keyboard.shortcut.common
+              Keyboard.Shortcut.Common.Copy
+            }
           />
         </ActionPanel>
       }
