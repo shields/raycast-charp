@@ -7,7 +7,8 @@ import Testing
 struct KeyboardLayoutTests {
     @MainActor
     private func source(_ properties: [String: String]) throws -> TISInputSource {
-        let sources = TISCreateInputSourceList(properties as CFDictionary, true).takeRetainedValue()
+        let sources = try #require(TISCreateInputSourceList(properties as CFDictionary, true))
+            .takeRetainedValue()
         let array = sources as! [TISInputSource]
         return try #require(array.first)
     }
@@ -17,6 +18,27 @@ struct KeyboardLayoutTests {
         let input = try source([kTISPropertyInputSourceID as String: id])
         let entries = try keyboardKeystrokes(source: input, keyboardType: 40)
         return Dictionary(uniqueKeysWithValues: entries.map { ($0.character, $0) })
+    }
+
+    @Test @MainActor
+    func usDeadKeyTranslation() throws {
+        let input = try source([kTISPropertyInputSourceID as String: "com.apple.keylayout.US"])
+        let property = try #require(TISGetInputSourceProperty(input, kTISPropertyUnicodeKeyLayoutData))
+        let data = Unmanaged<CFData>.fromOpaque(property).takeUnretainedValue()
+        let bytes = try #require(CFDataGetBytePtr(data))
+        let layout = UnsafeRawPointer(bytes).assumingMemoryBound(to: UCKeyboardLayout.self)
+        var state: UInt32 = 0
+        for (modifiers, expected) in [(UInt32(optionKey), ""), (0, "é")] {
+            var length = 0
+            var buffer = [UniChar](repeating: 0, count: 255)
+            let status = UCKeyTranslate(
+                layout, 14, UInt16(kUCKeyActionDown), modifiers >> 8, 40, 0,
+                &state, buffer.count, &length, &buffer
+            )
+            #expect(status == noErr)
+            #expect(Array(buffer.prefix(length)) == Array(expected.utf16))
+            #expect((state == 0) == !expected.isEmpty)
+        }
     }
 
     @Test @MainActor
@@ -68,7 +90,16 @@ struct KeyboardLayoutTests {
             .replacingOccurrences(of: "<keyMap index=\"3\">", with: "<keyMap index=\"3\"><key code=\"2\" output=\"∂\"/>")
         try xml.write(to: file, atomically: true, encoding: .utf8)
         #expect(TISRegisterInputSource(file as CFURL) == noErr)
-        let input = try source([kTISPropertyLocalizedName as String: name])
+        let sources = try #require(TISCreateInputSourceList(
+            [kTISPropertyInputSourceType as String: kTISTypeKeyboardLayout as String] as CFDictionary,
+            true
+        )).takeRetainedValue() as! [TISInputSource]
+        let input = try #require(sources.first { source in
+            guard let property = TISGetInputSourceProperty(source, kTISPropertyLocalizedName) else {
+                return false
+            }
+            return Unmanaged<CFString>.fromOpaque(property).takeUnretainedValue() as String == name
+        })
         let entries = try keyboardKeystrokes(source: input, keyboardType: 40)
         let map = Dictionary(uniqueKeysWithValues: entries.map { ($0.character, $0) })
         #expect(map["α"]?.label == "⌥A")
