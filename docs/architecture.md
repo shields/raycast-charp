@@ -7,14 +7,22 @@ CJK and Tangut ideographs excluded). The JSON is imported at runtime via the
 thin `src/characters.ts` re-export. The `data/` directory is a download cache —
 delete it to force re-download.
 
-**Keyboard layout** (`src/keyboard.ts`): Reads the user's active macOS
-`.keylayout` XML file (user-installed layouts only, not system `.dat` bundles).
-`buildKeystrokeMap()` parses the XML and produces a
-`Map<string, KeystrokeDescription>` mapping characters to their keystroke
-labels, including dead key sequences (e.g., `⌥E E` → `é`). This is the most
-complex module — it handles modifier layers (0–5), action/state machines for
-dead keys, and derives key labels from the base layer so they match the user's
-actual keyboard (AZERTY, QWERTZ, etc.).
+**Keyboard layout** (`src/keyboard.ts` and `swift/`): Raycast's Swift
+integration builds and bundles a native helper that reads the active layout with
+`TISCopyCurrentKeyboardLayoutInputSource` and translates physical keys with
+`UCKeyTranslate`. macOS supplies translation data for both built-in layouts and
+installed custom `.keylayout` files. Input methods use their underlying keyboard
+layout; candidate composition is outside the map's scope.
+
+The helper enumerates Shift, Option, Caps Lock, and their combinations, deriving
+key labels from the unmodified layout and respecting ANSI, ISO, and JIS keyboard
+geometry. It explores silent dead-key transitions in breadth-first order, so
+shorter sequences and simpler modifiers win. Paths that insert extra text or
+leave a dead key pending are excluded. Repeated states are visited once to bound
+cycles. A terminal output must be a single Unicode scalar to match a character
+database entry. The TypeScript bridge loads the resulting character-to-keystroke
+map, including sequences such as `⌥E E` → `é`. Native lookup errors propagate to
+Raycast's error UI.
 
 **Ranking** (`src/pick-character.tsx`): Three-tier ordering: recently used (with
 linear decay scoring from `src/recency.ts` via Raycast LocalStorage) >

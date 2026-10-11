@@ -2,3 +2,7 @@ node_modules/
 dist/
 data/
 coverage/
+swift/.build/
+swift/.swiftpm/
+.raycast-swift-build/
+compiled_raycast_swift/

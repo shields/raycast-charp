@@ -7,6 +7,9 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   resolve: {
     alias: {
+      "swift:../swift": fileURLToPath(
+        new URL("./test/stubs/swift.ts", import.meta.url),
+      ),
       // The real @raycast/api ships only type declarations, so point its
       // runtime at a stub for tests (see test/stubs/raycast-api.ts).
       "@raycast/api": fileURLToPath(
