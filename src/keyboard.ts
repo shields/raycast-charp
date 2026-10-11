@@ -140,18 +140,14 @@ function parseModifierMap(
   const result = new Map<number, ModifierInfo>();
   const modMaps = toArray(
     keyboard["modifierMap"] as
-      | ModifierMapElement
-      | ModifierMapElement[]
-      | undefined,
+      ModifierMapElement | ModifierMapElement[] | undefined,
   );
   if (modMaps.length === 0) return result;
 
   // A layout selects its modifierMap by id; fall back to the first map.
   const layouts = toArray(
     (keyboard["layouts"] as Record<string, unknown> | undefined)?.["layout"] as
-      | LayoutElement
-      | LayoutElement[]
-      | undefined,
+      LayoutElement | LayoutElement[] | undefined,
   );
   const wantedId = layouts[0]?.["@_modifiers"];
   const modMap = modMaps.find((m) => m["@_id"] === wantedId) ?? modMaps[0]!;
@@ -280,9 +276,7 @@ function parseKeylayout(xml: string): ParsedLayout {
   // Parse actions
   const rawActions = toArray(
     (keyboard["actions"] as Record<string, unknown> | undefined)?.["action"] as
-      | ActionElement
-      | ActionElement[]
-      | undefined,
+      ActionElement | ActionElement[] | undefined,
   );
   const actionDefs = new Map<string, ActionWhen[]>();
 
