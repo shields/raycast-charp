@@ -39,6 +39,7 @@ jobs:
       - run: make lint
       - run: make typecheck
       - run: make coverage
+      - run: make native-test
 
   build:
     name: build

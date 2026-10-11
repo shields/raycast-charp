@@ -1,7 +1,7 @@
 # Charp — Character Picker
 
 A [Raycast](https://raycast.com) extension for finding and inserting Unicode
-characters.
+letters, combining marks, punctuation, control characters, symbols, and emoji.
 
 ## Features
 
@@ -12,9 +12,10 @@ characters.
   active keyboard layout can type, then a popularity order learned from
   real-world web-text frequency. The characters you reach for surface to the top
   over time.
-- **Keyboard layout awareness** — for characters reachable on your installed
-  macOS layout, Charp shows the keystroke (e.g. `⌥E E` → `é`), including dead
-  key sequences.
+- **Keyboard layout awareness** — for characters reachable on your active macOS
+  layout, Charp shows the keystroke (e.g. `⌥E E` → `é`), including dead key
+  sequences. Both Apple's standard layouts and installed custom layouts are
+  supported.
 - **Emoji, variants, and sequences** — skin-tone and gender variants, country
   flags, keycaps, and ZWJ sequences, plus text/emoji presentation comparison
   (U+FE0E vs U+FE0F).
@@ -25,6 +26,8 @@ characters.
 
 - macOS with [Raycast](https://raycast.com) v2 installed
 - [Node.js](https://nodejs.org) 22+ and npm (for building from source)
+- Xcode with a Swift 6 toolchain (for building the native keyboard helper from
+  source; not required to use a built extension)
 
 ## Installation
 
@@ -85,10 +88,11 @@ by a generated character database and a handful of focused modules.
   used (with linear decay scoring from `src/recency.ts`, persisted via Raycast
   `LocalStorage`) > keyboard-accessible characters > the static popularity order
   from the generated data.
-- **Keyboard layout** (`src/keyboard.ts`) reads your active macOS `.keylayout`
-  XML file and builds a map from characters to keystroke labels, handling
-  modifier layers and dead key state machines so the labels match your actual
-  keyboard.
+- **Keyboard layout** (`src/keyboard.ts` and `swift/`) queries macOS for the
+  active layout and builds a map from characters to keystroke labels. Apple's
+  keyboard translation API handles built-in and custom layouts, modifier layers,
+  and dead keys. For input methods, the map describes the underlying keyboard
+  layout, not the input method's candidate composition.
 - **Unicode rendering** displays characters and emoji sequences directly in list
   titles and inline previews. The detail header uses `src/svg.ts` for a large
   SVG preview, with XML character references to escape characters such as `<`
@@ -103,10 +107,11 @@ For a deeper tour of the architecture, see
 make dev          # generate data + `ray develop` (live reload)
 make build        # generate data + `ray build`
 make test         # run the vitest suite
+make native-test  # test native keyboard translation on macOS
 make lint         # eslint + prettier --check
 make fmt          # prettier --write
 make typecheck    # tsc --noEmit
-make check        # lint + typecheck + test
+make check        # lint + typecheck + TypeScript and native tests (macOS)
 make generate     # regenerate src/characters.json from Unicode + FineFreq data
 make leipzig      # refresh src/leipzig-freq.json from the Leipzig corpora (~0.5GB)
 ```
@@ -132,13 +137,18 @@ consumes the committed result, so normal builds never touch the Leipzig corpora.
 The repository uses a Lefthook pre-commit hook that formats Markdown with
 Prettier and runs the test suite with coverage.
 
+Raycast builds and bundles the helper in `swift/` through its Swift integration.
+Run `make native-test` on macOS to check U.S., German, French, and custom
+layouts, including dead-key sequences. TypeScript tests mock the native bridge
+and also run on Linux.
+
 ## Project structure
 
 ```
 src/
   pick-character.tsx   Raycast command: search, rank, render, actions
   search.ts            query tokenization and match scoring
-  keyboard.ts          parse the active .keylayout into keystroke labels
+  keyboard.ts          load keystroke labels from the native keyboard helper
   recency.ts           recently-used tracking and recency boosts
   categories.ts        Unicode general-category labels for the detail panel
   svg.ts               Large SVG/data-URI character previews
@@ -150,6 +160,7 @@ scripts/
   generate-data.ts     download + parse UCD/emoji/FineFreq → generated artifacts
   compute-leipzig-freq.ts  count Leipzig corpora → src/leipzig-freq.json
 test/                  vitest suite
+swift/                 native macOS keyboard lookup and integration tests
 data/                  cached Unicode + FineFreq + Leipzig files (git-ignored)
 ```
 
