@@ -1,12 +1,13 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { once } from "node:events";
 import type { Debugger, Runtime } from "node:inspector";
+import { basename, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
+import { fileURLToPath } from "node:url";
 
 const timeoutMilliseconds = 5_000;
 
-function findProcess(): number {
-  const explicitPid = process.argv[2];
+export function findProcess(explicitPid?: string): number {
   if (explicitPid !== undefined) {
     if (!/^[1-9]\d*$/.test(explicitPid) || Number(explicitPid) < 2) {
       throw new Error(
@@ -16,49 +17,130 @@ function findProcess(): number {
     return Number(explicitPid);
   }
 
-  const processes = execFileSync("ps", ["-eo", "pid,command"], {
+  const processes = execFileSync("ps", ["axww", "-o", "pid=,ppid=,comm="], {
     encoding: "utf8",
+    timeout: timeoutMilliseconds,
   })
     .split("\n")
-    .filter(
-      (line) =>
-        line.includes("Raycast Helper (Extensions)") ||
-        (line.includes("Raycast.app") && line.includes("bin/node")),
-    );
-  if (processes.length !== 1) {
+    .flatMap((line) => {
+      const match = /^\s*(\d+)\s+(\d+)\s+(.+)$/.exec(line);
+      return match
+        ? [
+            {
+              pid: Number(match[1]),
+              parent: Number(match[2]),
+              command: match[3]!,
+            },
+          ]
+        : [];
+    });
+  const byPid = new Map(processes.map((entry) => [entry.pid, entry]));
+  const nodes = processes.filter((entry) =>
+    ["node", "nodejs", "Raycast Helper (Extensions)"].includes(
+      basename(entry.command),
+    ),
+  );
+  const candidates = nodes.filter((entry) => {
+    const visited = new Set<number>();
+    let current: typeof entry | undefined = entry;
+    while (current && !visited.has(current.pid)) {
+      visited.add(current.pid);
+      if (
+        /(?:^|\/)Raycast(?: [^/]*)?\.app\//.test(current.command) ||
+        basename(current.command) === "Raycast Helper (Extensions)"
+      )
+        return true;
+      current = byPid.get(current.parent);
+    }
+    return false;
+  });
+  const candidatePids = new Set(candidates.map((entry) => entry.pid));
+  const runtimes = candidates.filter((entry) => {
+    const visited = new Set<number>([entry.pid]);
+    let current = byPid.get(entry.parent);
+    while (current && !visited.has(current.pid)) {
+      if (candidatePids.has(current.pid)) return false;
+      visited.add(current.pid);
+      current = byPid.get(current.parent);
+    }
+    return true;
+  });
+  if (runtimes.length !== 1) {
+    const details = processes
+      .filter((entry) => /raycast|node/i.test(entry.command))
+      .map(
+        (entry) =>
+          `  PID ${entry.pid}, parent ${entry.parent}: ${entry.command}`,
+      )
+      .join("\n");
     throw new Error(
-      `Expected one Raycast extension process; found ${processes.length}. Keep the hung command open, or provide its Node PID as an argument.`,
+      `Expected one Raycast Node runtime; found ${runtimes.length}. Keep the hung command open, or provide its Node PID as an argument.\nProcess names (without arguments):\n${details || "  No Raycast or Node processes found"}`,
     );
   }
-  return Number(processes[0]!.trim().split(/\s+/, 1)[0]);
+  return runtimes[0]!.pid;
 }
 
-async function inspectorUrl(): Promise<string> {
-  let lastError: unknown;
-  for (let attempt = 0; attempt < 20; attempt++) {
-    try {
-      const response = await fetch("http://127.0.0.1:9229/json/list", {
-        signal: AbortSignal.timeout(500),
-      });
-      if (!response.ok) throw new Error(`Inspector HTTP ${response.status}`);
-      const targets = (await response.json()) as {
-        webSocketDebuggerUrl?: string;
-      }[];
-      const url = targets[0]?.webSocketDebuggerUrl;
-      if (targets.length !== 1 || !url) {
-        throw new Error("Expected one Node inspector target on port 9229");
-      }
-      const parsed = new URL(url);
-      if (parsed.protocol !== "ws:" || parsed.hostname !== "127.0.0.1") {
-        throw new Error("Expected a local Node inspector WebSocket");
-      }
-      return url;
-    } catch (error) {
-      lastError = error;
-      await delay(100);
-    }
+function listeningPorts(pid: number): number[] {
+  const result = spawnSync(
+    "lsof",
+    ["-nP", "-a", "-p", String(pid), "-iTCP", "-sTCP:LISTEN", "-Fn"],
+    { encoding: "utf8", timeout: timeoutMilliseconds },
+  );
+  if (result.error) throw result.error;
+  if (result.status === 1 && !result.stdout && !result.stderr) return [];
+  if (result.status !== 0) {
+    throw new Error(
+      `Could not inspect PID ${pid}'s listening ports: ${result.stderr}`,
+    );
   }
-  throw new Error("Could not reach the Node inspector on port 9229", {
+  return [
+    ...new Set(
+      [...result.stdout.matchAll(/^n.*:(\d+)$/gm)].map((match) =>
+        Number(match[1]),
+      ),
+    ),
+  ];
+}
+
+export async function inspectorUrl(pid: number): Promise<string> {
+  let lastError: unknown;
+  let signaled = false;
+  for (let attempt = 0; attempt < 20; attempt++) {
+    for (const port of listeningPorts(pid)) {
+      try {
+        const response = await fetch(`http://127.0.0.1:${port}/json/list`, {
+          signal: AbortSignal.timeout(500),
+        });
+        if (!response.ok) throw new Error(`Inspector HTTP ${response.status}`);
+        const targets = (await response.json()) as {
+          webSocketDebuggerUrl?: string;
+        }[];
+        const url = targets[0]?.webSocketDebuggerUrl;
+        if (targets.length !== 1 || !url) {
+          throw new Error(`Expected one Node inspector target on port ${port}`);
+        }
+        const parsed = new URL(url);
+        if (
+          parsed.protocol !== "ws:" ||
+          parsed.hostname !== "127.0.0.1" ||
+          Number(parsed.port) !== port
+        ) {
+          throw new Error(
+            "Expected a local Node inspector WebSocket on the discovered port",
+          );
+        }
+        return url;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    if (!signaled) {
+      process.kill(pid, "SIGUSR1");
+      signaled = true;
+    }
+    await delay(100);
+  }
+  throw new Error(`Could not find a Node inspector listening for PID ${pid}`, {
     cause: lastError,
   });
 }
@@ -72,8 +154,7 @@ type InspectorMessage = {
 };
 
 async function capture(pid: number): Promise<void> {
-  process.kill(pid, "SIGUSR1");
-  const socket = new WebSocket(await inspectorUrl());
+  const socket = new WebSocket(await inspectorUrl(pid));
   const pending = new Map<
     number,
     { resolve: (value: unknown) => void; reject: (error: Error) => void }
@@ -143,7 +224,7 @@ async function capture(pid: number): Promise<void> {
       { pid: number; version: string } | undefined;
     if (value?.pid !== pid) {
       throw new Error(
-        `Inspector belongs to PID ${value?.pid ?? "unknown"}, expected ${pid}. Close the other Node debugger using port 9229 and retry.`,
+        `Inspector belongs to PID ${value?.pid ?? "unknown"}, expected ${pid}.`,
       );
     }
     console.log(`Raycast extension PID ${pid}, Node ${value.version}`);
@@ -201,7 +282,16 @@ async function capture(pid: number): Promise<void> {
   }
 }
 
-capture(findProcess()).catch((error: unknown) => {
-  console.error(error);
-  process.exitCode = 1;
-});
+async function main(): Promise<void> {
+  await capture(findProcess(process.argv[2]));
+}
+
+if (
+  process.argv[1] &&
+  resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+) {
+  main().catch((error: unknown) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
+}
