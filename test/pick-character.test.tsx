@@ -13,6 +13,8 @@ import PickCharacter, {
 } from "../src/pick-character.js";
 import type { CharacterEntry, KeystrokeDescription } from "../src/types.js";
 
+vi.mock("../src/debug.js", () => ({ startDevelopmentInspector: vi.fn() }));
+
 interface ChildrenProps {
   children?: ReactNode;
 }

@@ -36,9 +36,12 @@ export function findProcess(explicitPid?: string): number {
     });
   const byPid = new Map(processes.map((entry) => [entry.pid, entry]));
   const nodes = processes.filter((entry) =>
-    ["node", "nodejs", "Raycast Helper (Extensions)"].includes(
-      basename(entry.command),
-    ),
+    [
+      "node",
+      "nodejs",
+      "Raycast Backend",
+      "Raycast Helper (Extensions)",
+    ].includes(basename(entry.command)),
   );
   const candidates = nodes.filter((entry) => {
     const visited = new Set<number>();
