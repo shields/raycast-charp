@@ -5,13 +5,14 @@ import {
   Action,
   ActionPanel,
   Clipboard,
+  environment,
   Icon,
   Keyboard,
   List,
   showHUD,
 } from "@raycast/api";
 import { usePromise } from "@raycast/utils";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { categoryLabel } from "./categories.js";
 import { characters } from "./characters.js";
 import { loadKeystrokeMap } from "./keyboard.js";
@@ -127,6 +128,29 @@ export default function PickCharacter() {
     [searchText, rankedCharacters, keyboardCps],
   );
 
+  const handleSearchTextChange = useCallback((text: string) => {
+    if (environment.isDevelopment) {
+      console.log("[Charp] search input", JSON.stringify(text));
+    }
+    setSearchText(text);
+  }, []);
+
+  useEffect(() => {
+    if (environment.isDevelopment) {
+      console.log(
+        "[Charp] search render",
+        JSON.stringify({
+          query: searchText,
+          results: visibleCharacters.length,
+          first: visibleCharacters[0]?.name,
+          characters: characters.length,
+          recencyLoaded: recentEntries !== undefined,
+          keyboardLoaded: keystrokeMap !== undefined,
+        }),
+      );
+    }
+  }, [searchText, visibleCharacters, recentEntries, keystrokeMap]);
+
   const handleSelect = useCallback(
     async (entry: CharacterEntry) => {
       const cps = entryCodePoints(entry);
@@ -145,7 +169,7 @@ export default function PickCharacter() {
       searchBarPlaceholder="Search Unicode characters…"
       isLoading={!recentEntries || !keystrokeMap}
       filtering={false}
-      onSearchTextChange={setSearchText}
+      onSearchTextChange={handleSearchTextChange}
       isShowingDetail
     >
       <List.EmptyView
