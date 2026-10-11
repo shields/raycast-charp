@@ -19,8 +19,6 @@ interface ChildrenProps {
 interface ListProps extends ChildrenProps {
   isLoading?: boolean;
   onSearchTextChange?: (text: string) => void;
-  selectedItemId?: string;
-  onSelectionChange?: (id: string | null) => void;
 }
 interface EmptyViewProps {
   title?: string;
@@ -30,7 +28,6 @@ interface Accessory {
   tooltip?: string;
 }
 interface ListItemProps {
-  id: string;
   title: string;
   accessories?: Accessory[];
   detail?: ReactNode;
@@ -48,50 +45,37 @@ interface CopyProps {
   content: string;
 }
 
-const renderRow = vi.hoisted(() => vi.fn());
-
 // Minimal stand-ins for the Raycast UI primitives: each renders a plain DOM
 // node that exposes the props the component sets so tests can read them back
 // and fire the action callbacks.
 vi.mock("@raycast/api", () => {
   const List = Object.assign(
-    ({
-      children,
-      isLoading,
-      onSearchTextChange,
-      selectedItemId,
-      onSelectionChange,
-    }: ListProps) => (
+    ({ children, isLoading, onSearchTextChange }: ListProps) => (
       <div data-testid="list" data-loading={String(isLoading)}>
         <input
           data-testid="search"
           onChange={(e) => onSearchTextChange?.(e.target.value)}
         />
-        <input
-          data-testid="selection"
-          value={selectedItemId ?? ""}
-          onChange={(e) => onSelectionChange?.(e.target.value || null)}
-        />
         {children}
       </div>
     ),
     {
+      Section: ({ children }: ChildrenProps) => (
+        <div data-testid="section">{children}</div>
+      ),
       EmptyView: ({ title }: EmptyViewProps) => (
         <div data-testid="empty">{title}</div>
       ),
       Item: Object.assign(
-        ({ id, title, accessories, detail, actions }: ListItemProps) => {
-          renderRow(id);
-          return (
-            <div data-testid="item" data-id={id} data-title={title}>
-              {(accessories ?? []).map((a, i) => (
-                <span key={i} data-tag={a.tag} />
-              ))}
-              {detail}
-              {actions}
-            </div>
-          );
-        },
+        ({ title, accessories, detail, actions }: ListItemProps) => (
+          <div data-testid="item" data-title={title}>
+            {(accessories ?? []).map((a, i) => (
+              <span key={i} data-tag={a.tag} />
+            ))}
+            {detail}
+            {actions}
+          </div>
+        ),
         {
           Detail: ({ markdown }: DetailProps) => (
             <div data-testid="detail">{markdown}</div>
@@ -142,7 +126,6 @@ vi.mock("@raycast/utils", async () => {
   return {
     usePromise: <T,>(fn: () => Promise<T>) => {
       const [data, setData] = useState<T | undefined>(undefined);
-      const [revalidate] = useState(() => vi.fn());
       useEffect(() => {
         let active = true;
         void fn().then((result) => {
@@ -155,7 +138,7 @@ vi.mock("@raycast/utils", async () => {
       return {
         data,
         isLoading: data === undefined,
-        revalidate,
+        revalidate: vi.fn(),
         mutate: vi.fn(),
         error: undefined,
       };
@@ -266,7 +249,6 @@ function itemMarkdown(
 ): string {
   const { container } = render(
     <CharacterItem
-      isSelected
       entry={entry}
       keystroke={keystroke}
       onSelect={vi.fn(() => Promise.resolve())}
@@ -301,7 +283,6 @@ describe("CharacterItem detail panel", () => {
   it("renders an SVG image and a keystroke line for a typable character", () => {
     const { container } = render(
       <CharacterItem
-        isSelected
         entry={{
           cp: 0xa9,
           name: "COPYRIGHT SIGN",
@@ -433,7 +414,6 @@ describe("CharacterItem actions", () => {
       const onSelect = vi.fn(() => Promise.resolve());
       const { container } = render(
         <CharacterItem
-          isSelected
           entry={entry}
           keystroke={undefined}
           onSelect={onSelect}
@@ -535,10 +515,14 @@ describe("PickCharacter", () => {
       );
     const enter = (values: string[]) => {
       for (const value of values) {
-        fireEvent.change(getByTestId("search"), { target: { value } });
-        expect(
-          container.querySelectorAll('[data-testid="detail"]'),
-        ).toHaveLength(titles().length === 0 ? 0 : 1);
+        const search = getByTestId("search");
+        const previousResults = getByTestId("section");
+        search.focus();
+        fireEvent.change(search, { target: { value } });
+        expect(getByTestId("search")).toBe(search);
+        expect(document.activeElement).toBe(search);
+        expect(getByTestId("section")).not.toBe(previousResults);
+        expect(previousResults.isConnected).toBe(false);
       }
     };
 
@@ -560,67 +544,5 @@ describe("PickCharacter", () => {
     expect(titles()).toEqual([]);
     enter(["", "heart"]);
     expect(titles()).toEqual(["♥  BLACK HEART SUIT"]);
-  });
-
-  it("shows only the selected preview and handles selection disappearing from search", async () => {
-    getItem.mockResolvedValue(undefined);
-    keystrokeLoader.mockResolvedValue(new Map());
-    const { container, getByTestId } = render(<PickCharacter />);
-    await waitFor(() =>
-      expect(getByTestId("list").getAttribute("data-loading")).toBe("false"),
-    );
-
-    const expectPreview = (id: string, name: string) => {
-      expect(container.querySelectorAll('[data-testid="detail"]')).toHaveLength(
-        1,
-      );
-      expect(getByTestId("selection")).toHaveProperty("value", id);
-      expect(getByTestId("detail").parentElement?.getAttribute("data-id")).toBe(
-        id,
-      );
-      expect(getByTestId("detail").textContent).toContain(name);
-    };
-
-    expectPreview("0041", "LATIN CAPITAL LETTER A");
-    fireEvent.change(getByTestId("selection"), { target: { value: "0042" } });
-    expectPreview("0042", "LATIN CAPITAL LETTER B");
-
-    fireEvent.change(getByTestId("search"), { target: { value: "letter" } });
-    expectPreview("0042", "LATIN CAPITAL LETTER B");
-    fireEvent.change(getByTestId("search"), { target: { value: "heart" } });
-    expectPreview("2665", "BLACK HEART SUIT");
-    fireEvent.change(getByTestId("search"), { target: { value: "letter" } });
-    expectPreview("0041", "LATIN CAPITAL LETTER A");
-
-    fireEvent.change(getByTestId("search"), {
-      target: { value: "no-such-character" },
-    });
-    fireEvent.change(getByTestId("selection"), { target: { value: "" } });
-    expect(container.querySelectorAll('[data-testid="detail"]')).toHaveLength(
-      0,
-    );
-    fireEvent.change(getByTestId("search"), { target: { value: "" } });
-    expectPreview("0041", "LATIN CAPITAL LETTER A");
-  });
-
-  it("reuses unchanged rows while narrowing the query", async () => {
-    getItem.mockResolvedValue(undefined);
-    keystrokeLoader.mockResolvedValue(new Map());
-    const { getByTestId } = render(<PickCharacter />);
-    await waitFor(() =>
-      expect(getByTestId("list").getAttribute("data-loading")).toBe("false"),
-    );
-    renderRow.mockClear();
-
-    for (const value of ["l", "le", "let", "lett", "lette", "letter"]) {
-      fireEvent.change(getByTestId("search"), { target: { value } });
-    }
-    expect(renderRow).not.toHaveBeenCalled();
-
-    fireEvent.change(getByTestId("search"), { target: { value: "letter b" } });
-    expect(renderRow).toHaveBeenCalledExactlyOnceWith("0042");
-    expect(getByTestId("detail").textContent).toContain(
-      "LATIN CAPITAL LETTER B",
-    );
   });
 });
