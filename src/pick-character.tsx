@@ -12,7 +12,7 @@ import {
   showHUD,
 } from "@raycast/api";
 import { usePromise } from "@raycast/utils";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { categoryLabel } from "./categories.js";
 import { characters } from "./characters.js";
 import { loadKeystrokeMap } from "./keyboard.js";
@@ -78,6 +78,7 @@ export function characterDisplay(entry: CharacterEntry): string {
 
 export default function PickCharacter() {
   const [searchText, setSearchText] = useState("");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const { data: recentEntries, revalidate: revalidateRecency } =
     usePromise(getRecentCharacters);
@@ -123,10 +124,28 @@ export default function PickCharacter() {
     return [...recent, ...withKey, ...rest];
   }, [recentEntries, keyboardCps]);
 
-  const visibleCharacters = useMemo(
-    () => searchCharacters(rankedCharacters, searchText, keyboardCps),
-    [searchText, rankedCharacters, keyboardCps],
+  const visibleCharacters = useMemo(() => {
+    const started = performance.now();
+    const results = searchCharacters(rankedCharacters, searchText, keyboardCps);
+    if (environment.isDevelopment) {
+      console.log(
+        "[Charp] search computed",
+        JSON.stringify({
+          query: searchText,
+          results: results.length,
+          milliseconds: Math.round(performance.now() - started),
+        }),
+      );
+    }
+    return results;
+  }, [searchText, rankedCharacters, keyboardCps]);
+
+  const selectedEntry = visibleCharacters.find(
+    (entry) => entryKey(entry) === selectedId,
   );
+  if (selectedId !== null && !selectedEntry) setSelectedId(null);
+  const previewEntry = selectedEntry ?? visibleCharacters[0];
+  const selectedItemId = previewEntry ? entryKey(previewEntry) : undefined;
 
   const handleSearchTextChange = useCallback((text: string) => {
     if (environment.isDevelopment) {
@@ -143,13 +162,20 @@ export default function PickCharacter() {
           query: searchText,
           results: visibleCharacters.length,
           first: visibleCharacters[0]?.name,
+          selectedItemId,
           characters: characters.length,
           recencyLoaded: recentEntries !== undefined,
           keyboardLoaded: keystrokeMap !== undefined,
         }),
       );
     }
-  }, [searchText, visibleCharacters, recentEntries, keystrokeMap]);
+  }, [
+    searchText,
+    visibleCharacters,
+    selectedItemId,
+    recentEntries,
+    keystrokeMap,
+  ]);
 
   const handleSelect = useCallback(
     async (entry: CharacterEntry) => {
@@ -170,6 +196,8 @@ export default function PickCharacter() {
       isLoading={!recentEntries || !keystrokeMap}
       filtering={false}
       onSearchTextChange={handleSearchTextChange}
+      {...(selectedItemId !== undefined && { selectedItemId })}
+      onSelectionChange={setSelectedId}
       isShowingDetail
     >
       <List.EmptyView
@@ -180,6 +208,7 @@ export default function PickCharacter() {
         <CharacterItem
           key={entryKey(entry)}
           entry={entry}
+          isSelected={entryKey(entry) === selectedItemId}
           keystroke={
             entry.cps
               ? undefined
@@ -192,24 +221,12 @@ export default function PickCharacter() {
   );
 }
 
-export function CharacterItem({
-  entry,
-  keystroke,
-  onSelect,
-}: {
-  entry: CharacterEntry;
-  keystroke: KeystrokeDescription | undefined;
-  onSelect: (entry: CharacterEntry) => Promise<void>;
-}) {
+function characterMarkdown(
+  entry: CharacterEntry,
+  keystroke: KeystrokeDescription | undefined,
+): string {
   const cps = entryCodePoints(entry);
-  const display = characterDisplay(entry);
-  const codePoints = cps.map(formatCodePoint);
-  const codePointStr = codePoints.join("\u00A0");
-
-  const accessories: List.Item.Accessory[] = keystroke
-    ? [{ tag: keystroke.label, tooltip: `Type: ${keystroke.label}` }]
-    : [];
-
+  const codePointStr = cps.map(formatCodePoint).join("\u00A0");
   const isControl = !entry.cps && isControlCodePoint(entry.cp);
   const imageCps = entry.vs ? [...cps, 0xfe0f] : cps;
   const lines = [
@@ -241,15 +258,39 @@ export function CharacterItem({
   if (keystroke) {
     lines.push("", `Keystroke: **${keystroke.label}**`);
   }
-  const markdown = lines.join("\n");
+  return lines.join("\n");
+}
+
+export const CharacterItem = memo(function CharacterItem({
+  entry,
+  keystroke,
+  onSelect,
+  isSelected,
+}: {
+  entry: CharacterEntry;
+  keystroke: KeystrokeDescription | undefined;
+  onSelect: (entry: CharacterEntry) => Promise<void>;
+  isSelected: boolean;
+}) {
+  const cps = entryCodePoints(entry);
+  const display = characterDisplay(entry);
+  const codePoints = cps.map(formatCodePoint);
+  const accessories: List.Item.Accessory[] = keystroke
+    ? [{ tag: keystroke.label, tooltip: `Type: ${keystroke.label}` }]
+    : [];
 
   const charString = String.fromCodePoint(...cps);
 
   return (
     <List.Item
+      id={entryKey(entry)}
       title={`${display}  ${entry.name}`}
       accessories={accessories}
-      detail={<List.Item.Detail markdown={markdown} />}
+      detail={
+        isSelected ? (
+          <List.Item.Detail markdown={characterMarkdown(entry, keystroke)} />
+        ) : undefined
+      }
       actions={
         <ActionPanel>
           <Action
@@ -275,4 +316,4 @@ export function CharacterItem({
       }
     />
   );
-}
+});
