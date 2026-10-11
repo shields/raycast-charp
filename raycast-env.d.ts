@@ -22,3 +22,11 @@ declare namespace Arguments {
   export type PickCharacter = {}
 }
 
+declare module "swift:*/swift" {
+  export function systemKeystrokes(): Promise<string>;
+
+  export class SwiftError extends Error {
+    stderr: string;
+    stdout: string;
+  }
+}
