@@ -1,32 +1,43 @@
 // SPDX-FileCopyrightText: Copyright © 2026 Michael Shields
 // SPDX-License-Identifier: MIT
 
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { characters } from "../src/characters.js";
-import { searchCharacters } from "../src/search.js";
 
 const JSON_PATH = join(import.meta.dirname, "..", "src", "characters.json");
 const VARIANT_PATH = join(import.meta.dirname, "..", "src", "variants.json");
 
-function cpuMillisecondsSince(start: NodeJS.CpuUsage): number {
-  const { user, system } = process.threadCpuUsage(start);
-  return (user + system) / 1000;
-}
-
-function benchmarkCpu(work: () => unknown, iterations: number): number {
-  for (let i = 0; i < 3; i++) work();
-  const start = process.threadCpuUsage();
-  for (let i = 0; i < iterations; i++) work();
-  return cpuMillisecondsSince(start) / iterations;
+function benchmarkCpu(
+  kind: "parse" | "search",
+  value: string,
+  iterations: number,
+): number {
+  const benchmarkEnvironment = { ...process.env };
+  // Coverage instrumentation changes the CPU work being measured.
+  delete benchmarkEnvironment.NODE_V8_COVERAGE;
+  return JSON.parse(
+    execFileSync(
+      process.execPath,
+      [
+        "--import",
+        "tsx",
+        join(import.meta.dirname, "fixtures", "benchmark.ts"),
+        kind,
+        value,
+        String(iterations),
+      ],
+      { encoding: "utf8", timeout: 20_000, env: benchmarkEnvironment },
+    ),
+  ) as number;
 }
 
 describe("benchmark", () => {
   it("parses character JSON averaging <100ms CPU", () => {
     const raw = readFileSync(JSON_PATH, "utf-8");
 
-    const elapsed = benchmarkCpu(() => JSON.parse(raw), 10);
+    const elapsed = benchmarkCpu("parse", JSON_PATH, 10);
     const data = JSON.parse(raw) as unknown[];
 
     console.log(
@@ -39,7 +50,7 @@ describe("benchmark", () => {
   it("parses variants JSON averaging <50ms CPU", () => {
     const raw = readFileSync(VARIANT_PATH, "utf-8");
 
-    const elapsed = benchmarkCpu(() => JSON.parse(raw), 10);
+    const elapsed = benchmarkCpu("parse", VARIANT_PATH, 10);
     const data = JSON.parse(raw) as Record<string, unknown[]>;
 
     const groups = Object.keys(data).length;
@@ -64,7 +75,7 @@ describe("benchmark", () => {
 });
 
 function benchmarkSearch(query: string, iterations: number): number {
-  return benchmarkCpu(() => searchCharacters(characters, query), iterations);
+  return benchmarkCpu("search", query, iterations);
 }
 
 describe("search benchmark", () => {
