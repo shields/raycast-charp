@@ -42,8 +42,18 @@ func characterIsVisible(_ text: String) -> Bool {
     }
 }
 
+func keyLabel(for output: String, keyCode: UInt16) -> String {
+    guard characterIsVisible(output) else { return "Key\(keyCode)" }
+    // Raycast's render sanitizer corrupts surrogate pairs with a U+D800 high surrogate.
+    return output.uppercased().unicodeScalars.map { scalar in
+        (0x10000...0x103ff).contains(scalar.value)
+            ? String(format: "U+%04X", scalar.value) : String(scalar)
+    }.joined()
+}
+
 func enumerateKeystrokes(
     strokes: [Stroke],
+    includeDeadKeySequences: Bool = true,
     translate: (Stroke, UInt32) throws -> Translation
 ) throws -> [Keystroke] {
     var result: [UInt32: Keystroke] = [:]
@@ -74,7 +84,7 @@ func enumerateKeystrokes(
                             completion: stroke.label
                         )
                 )
-            } else if visited.insert(translation.state).inserted {
+            } else if includeDeadKeySequences && visited.insert(translation.state).inserted {
                 // Only silent transitions can prefix a character without inserting extra text.
                 guard states.count < 1024 else { throw LayoutError.tooManyDeadKeyStates }
                 states.append((translation.state, current.path + [stroke]))
@@ -93,6 +103,11 @@ public func currentKeyboardKeystrokes() throws -> [Keystroke] {
 }
 
 func keyboardKeystrokes(source: TISInputSource, keyboardType: UInt32) throws -> [Keystroke] {
+    let sourceID = TISGetInputSourceProperty(source, kTISPropertyInputSourceID).map {
+        Unmanaged<CFString>.fromOpaque($0).takeUnretainedValue() as String
+    }
+    // Hex-code entry makes all Unicode typeable and is outside the shortcut map's scope.
+    let includeDeadKeySequences = sourceID != "com.apple.keylayout.UnicodeHexInput"
     guard let property = TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData) else {
         return []
     }
@@ -129,7 +144,7 @@ func keyboardKeystrokes(source: TISInputSource, keyboardType: UInt32) throws -> 
     var labels: [UInt16: String] = [:]
     for code in keyCodes {
         let output = try translate(keyCode: code, modifiers: 0, state: 0, noDeadKeys: true).output
-        let label = characterIsVisible(output) ? output.uppercased() : "Key\(code)"
+        let label = keyLabel(for: output, keyCode: code)
         labels[code] = code == 49 ? "Space" : keypadCodes.contains(code) ? "Keypad " + label : label
     }
 
@@ -147,7 +162,7 @@ func keyboardKeystrokes(source: TISInputSource, keyboardType: UInt32) throws -> 
         }
     }
     return try withExtendedLifetime(data) {
-        try enumerateKeystrokes(strokes: strokes) { stroke, state in
+        try enumerateKeystrokes(strokes: strokes, includeDeadKeySequences: includeDeadKeySequences) { stroke, state in
             try translate(keyCode: stroke.keyCode, modifiers: stroke.modifierMask, state: state)
         }
     }

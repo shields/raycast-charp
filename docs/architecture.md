@@ -12,7 +12,8 @@ integration builds and bundles a native helper that reads the active layout with
 `TISCopyCurrentKeyboardLayoutInputSource` and translates physical keys with
 `UCKeyTranslate`. macOS supplies translation data for both built-in layouts and
 installed custom `.keylayout` files. Input methods use their underlying keyboard
-layout; candidate composition is outside the map's scope.
+layout; candidate composition is outside the map's scope. Unicode Hex Input
+contributes direct keystrokes only; arbitrary hex-code entry is excluded.
 
 The helper enumerates Shift, Option, Caps Lock, and their combinations, deriving
 key labels from the unmodified layout and respecting ANSI, ISO, and JIS keyboard
@@ -73,10 +74,11 @@ the frequency order described under **Popularity scoring** above).
 **Unicode rendering**: List titles and inline Markdown display Unicode
 characters and emoji sequences directly. `characterDisplay()` uses readable
 labels for control characters and U+10000–U+103FF, whose surrogate pairs are
-unsafe in Raycast's render transport. Those characters retain their SVG glyph
-previews and full clipboard values. Text/emoji comparisons append U+FE0E or
-U+FE0F to the character, including characters above U+FFFF. Variant previews
-preserve the full sequence of code points.
+unsafe in Raycast's render transport. Native key labels also use code-point text
+for U+10000–U+103FF. Those characters retain their SVG glyph previews and full
+clipboard values. Text/emoji comparisons append U+FE0E or U+FE0F to the
+character, including characters above U+FFFF. Variant previews preserve the full
+sequence of code points.
 
 `svgCharacterImage()` (`src/svg.ts`) provides the detail panel's large preview:
 a 96-pixel glyph in a 150-by-150 SVG, independent of Markdown heading styles.

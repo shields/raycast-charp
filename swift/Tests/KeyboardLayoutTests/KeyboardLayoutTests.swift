@@ -67,6 +67,19 @@ struct KeyboardLayoutTests {
     }
 
     @Test @MainActor
+    func unicodeHexInputDirectKeystrokes() throws {
+        let map = try layout("com.apple.keylayout.UnicodeHexInput")
+        #expect(map["a"]?.label == "A")
+        #expect(map["A"]?.label == "⇧A")
+        #expect(map["0"]?.label == "0")
+        #expect(map["@"]?.label == "⇧2")
+        #expect(map[" "]?.label == "Space")
+        #expect(map["é"] == nil)
+        #expect(map["𝔸"] == nil)
+        #expect(map.values.allSatisfy { $0.deadKey == nil })
+    }
+
+    @Test @MainActor
     func activeLayout() throws {
         #expect(!(try currentKeyboardKeystrokes()).isEmpty)
     }
@@ -87,6 +100,7 @@ struct KeyboardLayoutTests {
         }
         let xml = try String(contentsOf: fixture, encoding: .utf8)
             .replacingOccurrences(of: "name=\"Test\"", with: "name=\"\(name)\"")
+            .replacingOccurrences(of: "<key code=\"1\" output=\"s\"/>", with: "<key code=\"1\" output=\"&#x10000;\"/>")
             .replacingOccurrences(of: "<key code=\"2\" output=\"d\"/>", with: "<key code=\"2\" output=\"\"/>")
             .replacingOccurrences(of: "<keyMap index=\"3\">", with: "<keyMap index=\"3\"><key code=\"2\" output=\"∂\"/>")
         try xml.write(to: file, atomically: true, encoding: .utf8)
@@ -109,6 +123,13 @@ struct KeyboardLayoutTests {
         #expect(map["é"]?.label == "⌥E E")
         #expect(map["Á"]?.label == "⌥E ⇧A")
         #expect(map["∂"]?.label == "⌥Key2")
+        #expect(map["\u{10000}"]?.label == "U+10000")
+        #expect(map["S"]?.label == "⇧U+10000")
+        #expect(entries.allSatisfy { entry in
+            [entry.label, entry.deadKey?.trigger ?? "", entry.deadKey?.completion ?? ""].allSatisfy {
+                $0.unicodeScalars.allSatisfy { !(0x10000...0x103ff).contains($0.value) }
+            }
+        })
     }
 
     @Test
@@ -150,6 +171,21 @@ struct KeyboardLayoutTests {
         }
         #expect(!characterIsVisible(""))
         #expect(characterIsVisible("𝔸"))
+    }
+
+    @Test(arguments: [
+        ("\u{10000}", "U+10000"),
+        ("\u{103ff}", "U+103FF"),
+        ("a\u{10001}b", "AU+10001B"),
+        ("\u{ffff}", "\u{ffff}"),
+        ("\u{10400}", "\u{10400}"),
+        ("𝔸", "𝔸"),
+        ("é", "É"),
+        ("", "Key0"),
+        ("\r", "Key0"),
+    ])
+    func renderSafeKeyLabels(output: String, expected: String) {
+        #expect(keyLabel(for: output, keyCode: 0) == expected)
     }
 
     @Test
