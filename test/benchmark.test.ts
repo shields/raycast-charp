@@ -15,13 +15,19 @@ function cpuMillisecondsSince(start: NodeJS.CpuUsage): number {
   return (user + system) / 1000;
 }
 
+function benchmarkCpu(work: () => unknown, iterations: number): number {
+  for (let i = 0; i < 3; i++) work();
+  const start = process.threadCpuUsage();
+  for (let i = 0; i < iterations; i++) work();
+  return cpuMillisecondsSince(start) / iterations;
+}
+
 describe("benchmark", () => {
-  it("parses character JSON using <100ms CPU", () => {
+  it("parses character JSON averaging <100ms CPU", () => {
     const raw = readFileSync(JSON_PATH, "utf-8");
 
-    const start = process.threadCpuUsage();
+    const elapsed = benchmarkCpu(() => JSON.parse(raw), 10);
     const data = JSON.parse(raw) as unknown[];
-    const elapsed = cpuMillisecondsSince(start);
 
     console.log(
       `JSON.parse: ${elapsed.toFixed(2)}ms CPU (${String(data.length)} entries, ${(raw.length / 1024 / 1024).toFixed(1)}MB)`,
@@ -30,12 +36,11 @@ describe("benchmark", () => {
     expect(data.length).toBeGreaterThan(50_000);
   });
 
-  it("parses variants JSON using <50ms CPU", () => {
+  it("parses variants JSON averaging <50ms CPU", () => {
     const raw = readFileSync(VARIANT_PATH, "utf-8");
 
-    const start = process.threadCpuUsage();
+    const elapsed = benchmarkCpu(() => JSON.parse(raw), 10);
     const data = JSON.parse(raw) as Record<string, unknown[]>;
-    const elapsed = cpuMillisecondsSince(start);
 
     const groups = Object.keys(data).length;
     console.log(
@@ -58,12 +63,8 @@ describe("benchmark", () => {
   });
 });
 
-/** Average per-call time of a search query, after a short warm-up. */
 function benchmarkSearch(query: string, iterations: number): number {
-  for (let i = 0; i < 3; i++) searchCharacters(characters, query);
-  const start = process.threadCpuUsage();
-  for (let i = 0; i < iterations; i++) searchCharacters(characters, query);
-  return cpuMillisecondsSince(start) / iterations;
+  return benchmarkCpu(() => searchCharacters(characters, query), iterations);
 }
 
 describe("search benchmark", () => {
