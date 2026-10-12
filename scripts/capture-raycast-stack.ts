@@ -11,7 +11,7 @@ export function findProcess(explicitPid?: string): number {
   if (explicitPid !== undefined) {
     if (!/^[1-9]\d*$/.test(explicitPid) || Number(explicitPid) < 2) {
       throw new Error(
-        "Usage: npx tsx scripts/capture-raycast-stack.ts [node-pid]",
+        "Usage: npx tsx scripts/capture-raycast-stack.ts [node-pid [websocket-url]]",
       );
     }
     return Number(explicitPid);
@@ -105,6 +105,20 @@ function listeningPorts(pid: number): number[] {
   ];
 }
 
+export function localInspectorUrl(value: string): URL {
+  const parsed = new URL(value);
+  if (
+    parsed.protocol !== "ws:" ||
+    parsed.hostname !== "127.0.0.1" ||
+    !parsed.port
+  ) {
+    throw new Error(
+      "Expected a loopback Node inspector WebSocket URL with a port",
+    );
+  }
+  return parsed;
+}
+
 export async function inspectorUrl(pid: number): Promise<string> {
   let lastError: unknown;
   let signaled = false;
@@ -122,12 +136,8 @@ export async function inspectorUrl(pid: number): Promise<string> {
         if (targets.length !== 1 || !url) {
           throw new Error(`Expected one Node inspector target on port ${port}`);
         }
-        const parsed = new URL(url);
-        if (
-          parsed.protocol !== "ws:" ||
-          parsed.hostname !== "127.0.0.1" ||
-          Number(parsed.port) !== port
-        ) {
+        const parsed = localInspectorUrl(url);
+        if (Number(parsed.port) !== port) {
           throw new Error(
             "Expected a local Node inspector WebSocket on the discovered port",
           );
@@ -156,8 +166,9 @@ type InspectorMessage = {
   params?: unknown;
 };
 
-async function capture(pid: number): Promise<void> {
-  const socket = new WebSocket(await inspectorUrl(pid));
+async function capture(pid: number, explicitUrl?: string): Promise<void> {
+  const address = localInspectorUrl(explicitUrl ?? (await inspectorUrl(pid)));
+  const socket = new WebSocket(address);
   const pending = new Map<
     number,
     { resolve: (value: unknown) => void; reject: (error: Error) => void }
@@ -286,7 +297,7 @@ async function capture(pid: number): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  await capture(findProcess(process.argv[2]));
+  await capture(findProcess(process.argv[2]), process.argv[3]);
 }
 
 if (

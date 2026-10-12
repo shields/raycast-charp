@@ -1,6 +1,10 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { findProcess, inspectorUrl } from "../scripts/capture-raycast-stack.js";
+import {
+  findProcess,
+  inspectorUrl,
+  localInspectorUrl,
+} from "../scripts/capture-raycast-stack.js";
 
 vi.mock("node:child_process", () => ({
   execFileSync: vi.fn(),
@@ -121,6 +125,21 @@ describe("Raycast process discovery", () => {
 });
 
 describe("Raycast inspector discovery", () => {
+  it("accepts an exact debugger URL without process or port discovery", () => {
+    const url = "ws://127.0.0.1:57734/94646570-e945-4e43-baed-8123f7ebf38e";
+    expect(localInspectorUrl(url).href).toBe(url);
+    expect(ps).not.toHaveBeenCalled();
+    expect(lsof).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    "https://127.0.0.1:57734/debugger",
+    "ws://example.com:57734/debugger",
+    "ws://127.0.0.1/debugger",
+  ])("rejects a debugger URL outside loopback: %s", (url) => {
+    expect(() => localInspectorUrl(url)).toThrow("Expected a loopback");
+  });
+
   it("connects to an existing inspector on a random port without signaling", async () => {
     lsof.mockReturnValue(sockets("p101\nn127.0.0.1:54321\n"));
     const url = "ws://127.0.0.1:54321/inspector-id";
