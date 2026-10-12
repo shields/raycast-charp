@@ -70,11 +70,13 @@ by name coverage (the fraction of the entry's name words the query accounts for
 exact-over-prefix, then input rank (recency/keyboard/popularity, the last being
 the frequency order described under **Popularity scoring** above).
 
-**Unicode rendering**: Raycast v2 displays Unicode characters and emoji
-sequences directly in list titles and inline Markdown. `characterDisplay()`
-keeps readable labels for control characters. Text/emoji comparisons append
-U+FE0E or U+FE0F to the character, including characters above U+FFFF. Variant
-previews preserve the full sequence of code points.
+**Unicode rendering**: List titles and inline Markdown display Unicode
+characters and emoji sequences directly. `characterDisplay()` uses readable
+labels for control characters and U+10000–U+103FF, whose surrogate pairs are
+unsafe in Raycast's render transport. Those characters retain their SVG glyph
+previews and full clipboard values. Text/emoji comparisons append U+FE0E or
+U+FE0F to the character, including characters above U+FFFF. Variant previews
+preserve the full sequence of code points.
 
 `svgCharacterImage()` (`src/svg.ts`) provides the detail panel's large preview:
 a 96-pixel glyph in a 150-by-150 SVG, independent of Markdown heading styles.

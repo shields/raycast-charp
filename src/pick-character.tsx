@@ -5,17 +5,15 @@ import {
   Action,
   ActionPanel,
   Clipboard,
-  environment,
   Icon,
   Keyboard,
   List,
   showHUD,
 } from "@raycast/api";
 import { usePromise } from "@raycast/utils";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { categoryLabel } from "./categories.js";
 import { characters } from "./characters.js";
-import { startDevelopmentInspector } from "./debug.js";
 import { loadKeystrokeMap } from "./keyboard.js";
 import {
   computeRecencyBoosts,
@@ -63,9 +61,19 @@ function isControlCodePoint(cp: number): boolean {
   return cp < 0x20 || (cp >= 0x7f && cp < 0xa0);
 }
 
+// Raycast 2.7.3's render sanitizer strips U+D800 even in valid surrogate pairs,
+// consuming the preceding JSON quote and terminating the command worker.
+function needsCodePointLabel(cp: number): boolean {
+  return cp >= 0x10000 && cp <= 0x103ff;
+}
+
 export function characterDisplay(entry: CharacterEntry): string {
   if (entry.cps) {
-    if (entry.cps.every((cp) => !isControlCodePoint(cp))) {
+    if (
+      entry.cps.every(
+        (cp) => !isControlCodePoint(cp) && !needsCodePointLabel(cp),
+      )
+    ) {
       return String.fromCodePoint(...entry.cps);
     }
     return `${formatCodePoint(entry.cps[0]!)}…`;
@@ -74,12 +82,12 @@ export function characterDisplay(entry: CharacterEntry): string {
   if (isControlCodePoint(cp)) {
     return `[${formatCodePoint(cp)}]`;
   }
+  if (needsCodePointLabel(cp)) return formatCodePoint(cp);
   return String.fromCodePoint(cp);
 }
 
 export default function PickCharacter() {
   const [searchText, setSearchText] = useState("");
-  useEffect(startDevelopmentInspector, []);
 
   const { data: recentEntries, revalidate: revalidateRecency } =
     usePromise(getRecentCharacters);
@@ -125,44 +133,10 @@ export default function PickCharacter() {
     return [...recent, ...withKey, ...rest];
   }, [recentEntries, keyboardCps]);
 
-  const visibleCharacters = useMemo(() => {
-    const started = performance.now();
-    const results = searchCharacters(rankedCharacters, searchText, keyboardCps);
-    if (environment.isDevelopment) {
-      console.log(
-        "[Charp] search computed",
-        JSON.stringify({
-          query: searchText,
-          results: results.length,
-          milliseconds: Math.round(performance.now() - started),
-        }),
-      );
-    }
-    return results;
-  }, [searchText, rankedCharacters, keyboardCps]);
-
-  const handleSearchTextChange = useCallback((text: string) => {
-    if (environment.isDevelopment) {
-      console.log("[Charp] search input", JSON.stringify(text));
-    }
-    setSearchText(text);
-  }, []);
-
-  useEffect(() => {
-    if (environment.isDevelopment) {
-      console.log(
-        "[Charp] search render",
-        JSON.stringify({
-          query: searchText,
-          results: visibleCharacters.length,
-          first: visibleCharacters[0]?.name,
-          characters: characters.length,
-          recencyLoaded: recentEntries !== undefined,
-          keyboardLoaded: keystrokeMap !== undefined,
-        }),
-      );
-    }
-  }, [searchText, visibleCharacters, recentEntries, keystrokeMap]);
+  const visibleCharacters = useMemo(
+    () => searchCharacters(rankedCharacters, searchText, keyboardCps),
+    [searchText, rankedCharacters, keyboardCps],
+  );
 
   const handleSelect = useCallback(
     async (entry: CharacterEntry) => {
@@ -172,7 +146,7 @@ export default function PickCharacter() {
       revalidateRecency();
       // Paste last: it closes the Raycast window and may suspend the process
       await Clipboard.paste(char);
-      await showHUD(`Pasted ${char}`);
+      await showHUD(`Pasted ${characterDisplay(entry)}`);
     },
     [revalidateRecency],
   );
@@ -182,14 +156,14 @@ export default function PickCharacter() {
       searchBarPlaceholder="Search Unicode characters…"
       isLoading={!recentEntries || !keystrokeMap}
       filtering={false}
-      onSearchTextChange={handleSearchTextChange}
+      onSearchTextChange={setSearchText}
       isShowingDetail
     >
       <List.EmptyView
         title="No Characters Found"
         description="Try a different search term"
       />
-      <List.Section key={searchText}>
+      <List.Section>
         {visibleCharacters.map((entry) => (
           <CharacterItem
             key={entryKey(entry)}

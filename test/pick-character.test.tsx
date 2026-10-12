@@ -2,18 +2,17 @@
 // SPDX-FileCopyrightText: Copyright © 2026 Michael Shields
 // SPDX-License-Identifier: MIT
 
-import { Clipboard, environment, LocalStorage } from "@raycast/api";
+import { Clipboard, LocalStorage, showHUD } from "@raycast/api";
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
+import characterData from "../src/characters.json";
 import { loadKeystrokeMap } from "../src/keyboard.js";
 import PickCharacter, {
   CharacterItem,
   characterDisplay,
 } from "../src/pick-character.js";
 import type { CharacterEntry, KeystrokeDescription } from "../src/types.js";
-
-vi.mock("../src/debug.js", () => ({ startDevelopmentInspector: vi.fn() }));
 
 interface ChildrenProps {
   children?: ReactNode;
@@ -104,7 +103,6 @@ vi.mock("@raycast/api", () => {
     <div data-testid="actions">{children}</div>
   );
   return {
-    environment: { isDevelopment: false },
     List,
     Action,
     ActionPanel,
@@ -174,6 +172,7 @@ vi.mock("../src/characters.js", () => ({
     { cp: 0xfe0f, name: "VARIATION SELECTOR-16", keywords: [], cat: "Mn" },
     { cp: 0x20e3, name: "COMBINING ENCLOSING KEYCAP", keywords: [], cat: "Me" },
     { cp: 0x2665, name: "BLACK HEART SUIT", keywords: [], cat: "So" },
+    { cp: 0x1028d, name: "LYCIAN LETTER L", keywords: [], cat: "Lo" },
   ],
 }));
 
@@ -190,7 +189,6 @@ const keystrokeLoader = vi.mocked(loadKeystrokeMap);
 
 beforeEach(() => {
   vi.clearAllMocks();
-  environment.isDevelopment = false;
 });
 
 afterEach(() => {
@@ -208,10 +206,43 @@ describe("characterDisplay", () => {
   });
 
   it.each([
+    { cp: 0xffff, expected: "\uFFFF" },
+    { cp: 0x10400, expected: "\u{10400}" },
     { cp: 0x1f4af, expected: "💯" },
     { cp: 0x1d400, expected: "𝐀" },
-  ])("renders non-BMP character $expected literally", ({ cp, expected }) => {
+  ])("renders character $expected literally", ({ cp, expected }) => {
     expect(characterDisplay(make({ cp }))).toBe(expected);
+  });
+
+  it.each([
+    { cp: 0x10000, expected: "U+10000" },
+    { cp: 0x1028d, expected: "U+1028D" },
+    { cp: 0x103ff, expected: "U+103FF" },
+  ])(
+    "labels $expected without exposing a U+D800 surrogate to Raycast",
+    ({ cp, expected }) => {
+      expect(characterDisplay(make({ cp }))).toBe(expected);
+    },
+  );
+
+  it("abbreviates a sequence containing a U+D800 surrogate pair", () => {
+    expect(characterDisplay(make({ cp: 0x41, cps: [0x41, 0x1028d] }))).toBe(
+      "U+0041…",
+    );
+  });
+
+  it("keeps every corpus title intact through Raycast's render sanitizer", () => {
+    const sanitize = (json: string) =>
+      json.replace(/[^\\](\\ud800|\ud800|\0)/gi, "");
+    const broken = JSON.stringify({ title: "𐊍  LYCIAN LETTER L" });
+    expect(() => JSON.parse(sanitize(broken))).toThrow();
+
+    const titles = (characterData as CharacterEntry[]).map((entry) => ({
+      title: `${characterDisplay(entry)}  ${entry.name}`,
+    }));
+    const json = JSON.stringify(titles);
+    expect(sanitize(json)).toBe(json);
+    expect(JSON.parse(sanitize(json))).toEqual(titles);
   });
 
   it("brackets a C0 control character", () => {
@@ -260,6 +291,19 @@ function itemMarkdown(
 }
 
 describe("CharacterItem detail panel", () => {
+  it("preserves a Lycian glyph in its SVG preview without a literal surrogate pair", () => {
+    const md = itemMarkdown({
+      cp: 0x1028d,
+      name: "LYCIAN LETTER L",
+      keywords: [],
+      cat: "Lo",
+    });
+    expect(md).toContain("U+1028D");
+    expect(md).not.toContain("\uD800");
+    const data = /base64,([^)]*)/.exec(md)![1]!;
+    expect(Buffer.from(data, "base64").toString()).toContain("&#x1028D;");
+  });
+
   it("shows a control character as a bracketed heading and lists keywords", () => {
     const md = itemMarkdown({
       cp: 0x07,
@@ -394,9 +438,20 @@ describe("CharacterItem detail panel", () => {
 });
 
 describe("CharacterItem actions", () => {
-  it.each([
+  it.each<{
+    cps: number[];
+    text: string;
+    codePoints: string;
+    display?: string;
+  }>([
     { cps: [0x41], text: "A", codePoints: "U+0041" },
     { cps: [0x1f4af], text: "💯", codePoints: "U+1F4AF" },
+    {
+      cps: [0x1028d],
+      text: "𐊍",
+      codePoints: "U+1028D",
+      display: "U+1028D",
+    },
     {
       cps: [0x1f3f4, 0x200d, 0x2620, 0xfe0f],
       text: "🏴‍☠️",
@@ -405,7 +460,7 @@ describe("CharacterItem actions", () => {
     { cps: [0x1f44b, 0x1f3fb], text: "👋🏻", codePoints: "U+1F44B U+1F3FB" },
   ])(
     "passes the full character to the actions for $codePoints",
-    ({ cps, text, codePoints }) => {
+    ({ cps, text, codePoints, display }) => {
       const entry: CharacterEntry = {
         cp: cps[0]!,
         ...(cps.length > 1 && { cps }),
@@ -442,7 +497,7 @@ describe("CharacterItem actions", () => {
         container
           .querySelector('[data-testid="item"]')
           ?.getAttribute("data-title"),
-      ).toBe(`${text}  TEST CHARACTER`);
+      ).toBe(`${display ?? text}  TEST CHARACTER`);
     },
   );
 });
@@ -480,7 +535,7 @@ describe("PickCharacter", () => {
       [...container.querySelectorAll('[data-testid="item"]')].map((el) =>
         el.getAttribute("data-title"),
       );
-    expect(titles()).toHaveLength(9);
+    expect(titles()).toHaveLength(10);
     // Most-recent character first (A, B), then keyboard-accessible 'a', then
     // the rest tier in data order (C, then the France flag at index 4).
     expect(titles()[0]).toBe("A  LATIN CAPITAL LETTER A");
@@ -501,9 +556,26 @@ describe("PickCharacter", () => {
     });
   });
 
+  it("pastes the original Lycian character and uses a safe HUD label", async () => {
+    getItem.mockResolvedValue(JSON.stringify([{ cp: 0x1028d }]));
+    keystrokeLoader.mockResolvedValue(new Map());
+    const { container, getByTestId } = render(<PickCharacter />);
+    await waitFor(() =>
+      expect(getByTestId("list").getAttribute("data-loading")).toBe("false"),
+    );
+    expect(
+      container
+        .querySelector('[data-testid="item"]')
+        ?.getAttribute("data-title"),
+    ).toBe("U+1028D  LYCIAN LETTER L");
+    fireEvent.click(
+      container.querySelector('[data-action="Paste Character"]')!,
+    );
+    await waitFor(() => expect(paste).toHaveBeenCalledWith("𐊍"));
+    expect(showHUD).toHaveBeenCalledWith("Pasted U+1028D");
+  });
+
   it("updates results after typing, clearing, and entering a different query", async () => {
-    environment.isDevelopment = true;
-    vi.spyOn(console, "log").mockImplementation(() => {});
     getItem.mockResolvedValue(undefined);
     keystrokeLoader.mockResolvedValue(new Map());
     const { container, getByTestId } = render(<PickCharacter />);
@@ -518,13 +590,10 @@ describe("PickCharacter", () => {
     const enter = (values: string[]) => {
       for (const value of values) {
         const search = getByTestId("search");
-        const previousResults = getByTestId("section");
         search.focus();
         fireEvent.change(search, { target: { value } });
         expect(getByTestId("search")).toBe(search);
         expect(document.activeElement).toBe(search);
-        expect(getByTestId("section")).not.toBe(previousResults);
-        expect(previousResults.isConnected).toBe(false);
       }
     };
 
@@ -532,10 +601,11 @@ describe("PickCharacter", () => {
     expect(titles()).toEqual(["♥  BLACK HEART SUIT"]);
 
     enter(["hear", "hea", "he", "h", ""]);
-    expect(titles()).toHaveLength(9);
+    expect(titles()).toHaveLength(10);
 
     enter(["l", "le", "let", "lett", "lette", "letter"]);
     expect(titles()).toEqual([
+      "U+1028D  LYCIAN LETTER L",
       "A  LATIN CAPITAL LETTER A",
       "B  LATIN CAPITAL LETTER B",
       "a  LATIN SMALL LETTER A",

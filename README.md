@@ -96,7 +96,9 @@ by a generated character database and a handful of focused modules.
 - **Unicode rendering** displays characters and emoji sequences directly in list
   titles and inline previews. The detail header uses `src/svg.ts` for a large
   SVG preview, with XML character references to escape characters such as `<`
-  and `&`. Control characters use readable code-point labels.
+  and `&`. Control characters and U+10000–U+103FF use readable code-point labels
+  in titles; the latter retain their SVG glyph previews and full clipboard
+  values.
 
 For a deeper tour of the architecture, see
 [docs/architecture.md](docs/architecture.md).
