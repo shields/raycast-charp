@@ -1,7 +1,8 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { once } from "node:events";
+import { realpathSync } from "node:fs";
 import type { Debugger, Runtime } from "node:inspector";
-import { basename, resolve } from "node:path";
+import { basename } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 
@@ -167,7 +168,10 @@ type InspectorMessage = {
 };
 
 async function capture(pid: number, explicitUrl?: string): Promise<void> {
+  console.log(`Capturing Raycast stack for PID ${pid}`);
+  if (!explicitUrl) console.log("Discovering the inspector URL...");
   const address = localInspectorUrl(explicitUrl ?? (await inspectorUrl(pid)));
+  console.log(`Connecting to ${address.href}`);
   const socket = new WebSocket(address);
   const pending = new Map<
     number,
@@ -205,6 +209,7 @@ async function capture(pid: number, explicitUrl?: string): Promise<void> {
     method: string,
     params: Record<string, unknown> = {},
   ): Promise<T> {
+    console.log(`Inspector request: ${method}`);
     const id = ++nextId;
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
@@ -226,6 +231,7 @@ async function capture(pid: number, explicitUrl?: string): Promise<void> {
     await once(socket, "open", {
       signal: AbortSignal.timeout(timeoutMilliseconds),
     });
+    console.log("Inspector connected");
     const identity = await send<Runtime.EvaluateReturnType>(
       "Runtime.evaluate",
       {
@@ -302,7 +308,7 @@ async function main(): Promise<void> {
 
 if (
   process.argv[1] &&
-  resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+  realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))
 ) {
   main().catch((error: unknown) => {
     console.error(error);
