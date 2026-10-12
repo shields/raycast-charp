@@ -25,7 +25,7 @@ describe("development inspector", () => {
     expect(console.log).not.toHaveBeenCalled();
   });
 
-  it("opens a loopback inspector, reports its address, and closes it on cleanup", () => {
+  it("keeps the worker inspector open across React cleanup and remount", () => {
     const dispose = vi.fn();
     vi.mocked(open).mockReturnValue({ [Symbol.dispose]: dispose });
     const address = "ws://127.0.0.1:54321/charp";
@@ -37,15 +37,25 @@ describe("development inspector", () => {
       "[Charp] debugger",
       expect.stringContaining(address),
     );
+    expect(console.log).toHaveBeenCalledWith(
+      "[Charp] capture command",
+      `npx tsx scripts/capture-raycast-stack.ts ${process.pid} '${address}'`,
+    );
     expect(dispose).not.toHaveBeenCalled();
     expect(cleanup).toBeTypeOf("function");
     cleanup!();
-    expect(dispose).toHaveBeenCalledOnce();
+    expect(dispose).not.toHaveBeenCalled();
+    expect(console.log).toHaveBeenCalledWith(
+      "[Charp] command unmounted",
+      expect.stringContaining(address),
+    );
+    startDevelopmentInspector();
+    expect(open).toHaveBeenCalledOnce();
   });
 
   it("preserves an inspector that is already open", () => {
     vi.mocked(url).mockReturnValue("ws://127.0.0.1:54321/existing");
-    expect(startDevelopmentInspector()).toBeUndefined();
+    expect(startDevelopmentInspector()).toBeTypeOf("function");
     expect(open).not.toHaveBeenCalled();
   });
 
@@ -55,5 +65,11 @@ describe("development inspector", () => {
       throw new Error("inspector unavailable");
     });
     expect(startDevelopmentInspector).toThrow("inspector unavailable");
+  });
+
+  it("fails if opening the inspector does not provide a URL", () => {
+    vi.mocked(url).mockReturnValue(undefined);
+    expect(startDevelopmentInspector).toThrow("did not expose a debugger URL");
+    expect(console.log).not.toHaveBeenCalled();
   });
 });
