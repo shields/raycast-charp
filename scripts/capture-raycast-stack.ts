@@ -1,5 +1,4 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { once } from "node:events";
 import { realpathSync } from "node:fs";
 import type { Debugger, Runtime } from "node:inspector";
 import { basename } from "node:path";
@@ -167,6 +166,49 @@ type InspectorMessage = {
   params?: unknown;
 };
 
+export async function waitForInspector(socket: WebSocket): Promise<void> {
+  const listeners = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await new Promise<void>((resolve, reject) => {
+      timer = setTimeout(
+        () =>
+          reject(
+            new Error(`Timed out connecting to inspector at ${socket.url}`),
+          ),
+        timeoutMilliseconds,
+      );
+      socket.addEventListener("open", () => resolve(), {
+        signal: listeners.signal,
+      });
+      socket.addEventListener(
+        "error",
+        (event) =>
+          reject(
+            new Error(
+              `Could not connect to inspector at ${socket.url}. Use the latest [Charp] capture command from the currently open session.`,
+              { cause: (event as ErrorEvent).error },
+            ),
+          ),
+        { signal: listeners.signal },
+      );
+      socket.addEventListener(
+        "close",
+        () =>
+          reject(
+            new Error(
+              "Inspector connection closed before the handshake completed",
+            ),
+          ),
+        { signal: listeners.signal },
+      );
+    });
+  } finally {
+    clearTimeout(timer);
+    listeners.abort();
+  }
+}
+
 async function capture(pid: number, explicitUrl?: string): Promise<void> {
   console.log(`Capturing Raycast stack for PID ${pid}`);
   if (!explicitUrl) console.log("Discovering the inspector URL...");
@@ -228,9 +270,7 @@ async function capture(pid: number, explicitUrl?: string): Promise<void> {
   }
 
   try {
-    await once(socket, "open", {
-      signal: AbortSignal.timeout(timeoutMilliseconds),
-    });
+    await waitForInspector(socket);
     console.log("Inspector connected");
     const identity = await send<Runtime.EvaluateReturnType>(
       "Runtime.evaluate",

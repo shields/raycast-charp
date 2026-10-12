@@ -4,6 +4,7 @@ import {
   findProcess,
   inspectorUrl,
   localInspectorUrl,
+  waitForInspector,
 } from "../scripts/capture-raycast-stack.js";
 
 vi.mock("node:child_process", () => ({
@@ -22,8 +23,59 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+});
+
+describe("inspector WebSocket handshake", () => {
+  function socket(): WebSocket {
+    return Object.assign(new EventTarget(), {
+      url: "ws://127.0.0.1:54321/inspector",
+    }) as WebSocket;
+  }
+
+  it("accepts an open connection and clears its timeout", async () => {
+    vi.useFakeTimers();
+    const connection = socket();
+    const ready = waitForInspector(connection);
+    connection.dispatchEvent(new Event("open"));
+    await ready;
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("reports a connection error with its underlying cause", async () => {
+    const connection = socket();
+    const ready = waitForInspector(connection);
+    const cause = new Error("connect ECONNREFUSED");
+    connection.dispatchEvent(
+      Object.assign(new Event("error"), { error: cause }),
+    );
+    await expect(ready).rejects.toMatchObject({
+      message: expect.stringContaining("Could not connect to inspector"),
+      cause,
+    });
+  });
+
+  it("rejects a connection closed before the handshake completes", async () => {
+    const connection = socket();
+    const ready = waitForInspector(connection);
+    connection.dispatchEvent(new Event("close"));
+    await expect(ready).rejects.toThrow(
+      "closed before the handshake completed",
+    );
+  });
+
+  it("fails a handshake that never receives a response", async () => {
+    vi.useFakeTimers();
+    const ready = waitForInspector(socket());
+    const failure = expect(ready).rejects.toThrow(
+      "Timed out connecting to inspector",
+    );
+    await vi.advanceTimersByTimeAsync(5000);
+    await failure;
+    expect(vi.getTimerCount()).toBe(0);
+  });
 });
 
 function sockets(stdout: string, status = 0): ReturnType<typeof spawnSync> {
