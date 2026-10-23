@@ -32,7 +32,7 @@
     "@types/react-dom": "19.3.0",
     "@vitest/coverage-v8": "5.0.5",
     "eslint": "10.13.0",
-    "happy-dom": "21.0.3",
+    "happy-dom": "21.0.4",
     "prettier": "3.9.10",
     "react-dom": "19.3.1",
     "tsx": "4.23.15",
