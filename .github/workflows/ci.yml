@@ -3,6 +3,7 @@ name: CI
 on:
   push:
     branches: ["**"]
+  pull_request: null
 
 # Least privilege by default; this workflow only reads the repo.
 permissions:
@@ -20,10 +21,10 @@ jobs:
     # Charp is a macOS-only Raycast extension, so lint and test on macOS.
     runs-on: macos-26
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      - uses: actions/setup-node@v7.1.0
         with:
           node-version: 26 # match the Node runtime @raycast/api targets
           cache: npm
@@ -32,10 +33,13 @@ jobs:
       # first run and reuses them afterward. Cache that directory so CI does not
       # refetch ~12 MB from unicode.org and Hugging Face every run; the script
       # hash keys the cache, so bumping the Unicode version busts it.
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - uses: actions/cache@v6.1.0
         with:
           path: data
           key: charp-data-${{ hashFiles('scripts/generate-data.ts') }}
+      - run: make actions-lock-install
+        env:
+          GH_TOKEN: ${{ github.token }}
       - run: make lint
       - run: make typecheck
       - run: make coverage
@@ -46,16 +50,16 @@ jobs:
     # Validate that the extension bundles via `ray build` (does not publish).
     runs-on: macos-26
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      - uses: actions/setup-node@v7.1.0
         with:
           node-version: 26 # match the Node runtime @raycast/api targets
           cache: npm
       - run: npm ci
       # Same key as the test job: restore the shared Unicode/FineFreq data cache.
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - uses: actions/cache@v6.1.0
         with:
           path: data
           key: charp-data-${{ hashFiles('scripts/generate-data.ts') }}

@@ -17,7 +17,7 @@ typecheck: generate
 
 check: generate lint typecheck coverage native-test
 
-lint:
+lint: actions-lock-verify-local
 	npx ray lint
 	npx prettier --check .
 
@@ -37,3 +37,17 @@ leipzig:
 
 icon:
 	npx tsx scripts/generate-icon.ts
+
+.PHONY: actions-lock-install actions-lock actions-lock-verify-local actions-lock-verify
+
+actions-lock-install:
+	gh extension install github/gh-actions-lock --pin v0.4.1 --force
+
+actions-lock:
+	gh actions-lock --no-interactive
+
+actions-lock-verify-local:
+	gh actions-lock --verify-local
+
+actions-lock-verify:
+	gh actions-lock --verify
