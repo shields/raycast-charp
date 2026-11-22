@@ -23,7 +23,7 @@ jobs:
       # zizmorcore is zizmor's official org (woodruffw/zizmor redirects
       # there); zizmorcore/zizmor-action is the action docs.zizmor.sh
       # recommends, not a typosquat.
-      - uses: zizmorcore/zizmor-action@v0.8.1
+      - uses: zizmorcore/zizmor-action@v0.9.0
         with:
           persona: pedantic
           # Fail the job on findings with inline annotations instead of
